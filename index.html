@@ -662,6 +662,19 @@ GRM.material.color.set(0x3a4b5e);
 function mkRing(x,z,col,r){const g=new THREE.Group(),rg=new THREE.Mesh(new THREE.RingGeometry(r-.4,r,40),new THREE.MeshBasicMaterial({color:col,side:2}));rg.rotation.x=-Math.PI/2;rg.position.y=.05;
  const bm=new THREE.Mesh(new THREE.CylinderGeometry(r,r,30,24,1,true),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.15,fog:false,side:2}));bm.position.y=15;g.add(rg,bm);g.position.set(x,0,z);S.add(g);return g}
 function beam(m,col,h){const b=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,h,6,1,true),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.4,fog:false}));b.position.y=h/2;m.add(b)}
+// Reservas de efeito desenhadas de uma vez (InstancedMesh: uma chamada de desenho por reserva, em vez de uma por peça).
+// Cada peça é um Object3D solto (fora da cena) com um material de mentira {color,opacity}; o código dos efeitos mexe nela como antes
+// e ipSync() (antes de desenhar) copia as visíveis para as instâncias. Aditivo: a opacidade escurece a cor, que dá o mesmo resultado na tela.
+// count=0 só depois de setColorAt (ele cria a cor do tamanho de count). bb: de frente para a câmera (no lugar de Sprite). Filho (o brilho da bala): vale a matriz do pai vezes a dele e só aparece com o pai.
+const IPL=[],IPC=new THREE.Color(),IPM=new THREE.Matrix4(),IPW=new THREE.Color(1,1,1);
+function ipool(geo,mat,n,o){o=o||{};const im=new THREE.InstancedMesh(geo,mat,n);im.frustumCulled=false;
+ for(let i=0;i<n;i++)im.setColorAt(i,IPW);im.count=0;im.visible=false;S.add(im);const P={im,o:[],n,add:!!o.add,bb:!!o.bb};IPL.push(P);return P}
+function ipObj(P,par){if(P.o.length>=P.n)throw new Error('ipool cheia');const m=new THREE.Object3D();m.visible=!!par;m.material={color:new THREE.Color(1,1,1),opacity:1};if(par)par.add(m);P.o.push(m);return m}
+function ipSync(){for(const P of IPL){const im=P.im;let n=0;
+ for(const m of P.o){const pa=m.parent;if(!m.visible||pa&&!pa.visible)continue;if(P.bb)m.quaternion.copy(cam.quaternion);m.updateMatrix();
+  if(pa){pa.updateMatrix();IPM.multiplyMatrices(pa.matrix,m.matrix);im.setMatrixAt(n,IPM)}else im.setMatrixAt(n,m.matrix);
+  IPC.copy(m.material.color);if(P.add)IPC.multiplyScalar(cl(m.material.opacity,0,1));im.setColorAt(n,IPC);n++}
+ im.count=n;im.visible=n>0;if(n){im.instanceMatrix.needsUpdate=true;im.instanceColor.needsUpdate=true}}}
 
 // ---- world/map.js ----
 // Mapa: colisão, linha de visão e raio contra paredes. A geração do nível fica em world/level.js.
@@ -1054,14 +1067,19 @@ function gen(r,ty){ty=ty||pickT();const k=ST.map(s=>s[0]),wt=k.map(()=>Math.pow(
 function wpStats(o){const T=TY[o.ty],g=n=>L(T[n][0],T[n][1],o.v[n]);
  Object.assign(o,{ml:T.ml?1:0,cone:T.cone,dmg:Math.round(g('dmg')),rate:+g('rate').toFixed(1),mag:Math.round(g('mag')),lock:+g('lock').toFixed(2),slots:Math.round(g('slots')),range:Math.round(g('range'))});o.dps=Math.round(o.dmg*o.rate);return o}
 const pickR=()=>{const x=Math.random();return x<.55?0:x<.83?1:x<.95?2:x<.99?3:4};
-const TRP=[];
-for(let i=0;i<64;i++){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffffff}));l.visible=false;l.frustumCulled=false;S.add(l);TRP.push({l,t:0})}
+// linha fina: as 64 linhas saem de um LineSegments só; cada entrada guarda as pontas e a cor e trpSync() junta as visíveis
+const TRP=[],TRPN=64,TRPG=new THREE.BufferGeometry(),TRPL=new THREE.LineSegments(TRPG,new THREE.LineBasicMaterial({vertexColors:true}));
+TRPG.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TRPN*6),3));TRPG.setAttribute('color',new THREE.BufferAttribute(new Float32Array(TRPN*6),3));TRPL.frustumCulled=false;TRPL.visible=false;S.add(TRPL);
+for(let i=0;i<TRPN;i++)TRP.push({l:{visible:false,material:{color:new THREE.Color()},geometry:{attributes:{position:{array:new Float32Array(6),needsUpdate:false}}}},t:0});
+function trpSync(){const P=TRPG.attributes.position,Cl=TRPG.attributes.color;let n=0;for(const o of TRP){if(!o.l.visible)continue;P.array.set(o.l.geometry.attributes.position.array,n*6);const c=o.l.material.color;for(let k=n*6;k<n*6+6;k+=3){Cl.array[k]=c.r;Cl.array[k+1]=c.g;Cl.array[k+2]=c.b}n++}
+ TRPG.setDrawRange(0,n*2);TRPL.visible=n>0;if(n){P.needsUpdate=true;Cl.needsUpdate=true}}
 // rastro: linha fina por 1–2 quadros (estalo) + bala: miolo quase branco afinando para trás, halo largo na cor da arma e cabeça brilhante,
 // que corre do cano até o alvo em J.trH do tempo J.trT e some (TRS). O impacto visual chega junto com a cabeça (impact em fx/juice.js)
 const TRS=[],TRG=new THREE.CylinderGeometry(.5,.08,1,6,1,true);TRG.rotateX(Math.PI/2);
 const TADD=()=>({color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false});
-for(let i=0;i<32;i++){const m=new THREE.Mesh(TRG,new THREE.MeshBasicMaterial(TADD())),g=new THREE.Mesh(TRG,new THREE.MeshBasicMaterial(TADD())),h=new THREE.Sprite(new THREE.SpriteMaterial(Object.assign(TADD(),{map:TXF})));
- g.scale.set(J.trG,J.trG,1);m.add(g);[m,h].forEach(o=>{o.visible=false;o.frustumCulled=false;S.add(o)});TRS.push({m,g,h,t:0,a:new THREE.Vector3(),b:new THREE.Vector3(),w:1})}
+// três reservas instanciadas (ipool, gfx/assets.js): miolo, halo (filho do miolo) e cabeça (quadrado de frente para a câmera, no lugar do Sprite)
+const TRSM=ipool(TRG,new THREE.MeshBasicMaterial(TADD()),32,{add:1}),TRSG=ipool(TRG,new THREE.MeshBasicMaterial(TADD()),32,{add:1}),TRSH=ipool(VG.pl,new THREE.MeshBasicMaterial(Object.assign(TADD(),{map:TXF})),32,{add:1,bb:1});
+for(let i=0;i<32;i++){const m=ipObj(TRSM),g=ipObj(TRSG,m),h=ipObj(TRSH);g.scale.set(J.trG,J.trG,1);TRS.push({m,g,h,t:0,a:new THREE.Vector3(),b:new THREE.Vector3(),w:1})}
 let trI=0,tsI=0;
 function tracer(a,b,c){const o=TRP[trI++%TRP.length],q=o.l.geometry.attributes.position;q.array[0]=a.x;q.array[1]=a.y;q.array[2]=a.z;q.array[3]=b.x;q.array[4]=b.y;q.array[5]=b.z;q.needsUpdate=true;o.l.material.color.set(c);o.l.visible=true;o.t=.035;
  const r=TRS[tsI++%gqL(TRS)];r.a.copy(a);r.b.copy(b);r.t=J.trT;r.w=c=='#fbbf24'?1.4:1;r.m.material.color.set(c).lerp(TELC,J.trK);r.g.material.color.set(c);r.h.material.color.set(c).lerp(TELC,.4);r.m.visible=r.h.visible=true;trsTick(r)}
@@ -1333,7 +1351,8 @@ function animBot(e,dt){if(!e.v)return;const v=e.v,p=e.m.position;if(e.lx==null){
  if(v.bp){v.bp.visible=!!(e.mn||e.mt>0);v.mz.visible=T<(e.mf||0)}
  if(v.fl){v.fl.visible=!!e.rc;if(e.rc){const h=2+10*cl(1-(e.rc-T)/ESP.rad.t,0,1);v.fl.scale.set(1,h,1);v.fl.position.y=2.6+h/2}}}
 const SHP=[];
-for(let i=0;i<72;i++){const m=new THREE.Mesh(VG.box,lam(0xffffff));m.visible=false;S.add(m);SHP.push({m,t:0})}
+// uma reserva instanciada (ipool, gfx/assets.js): os 72 pedaços saem numa chamada de desenho só
+const SHPP=ipool(VG.box,lam(0xffffff),72);for(let i=0;i<72;i++)SHP.push({m:ipObj(SHPP),t:0})
 let shI=0;
 function shatter(e){const c=ec(e),col=e.v?e.v.mats[0].color:new THREE.Color(0xf59e0b),n=gqN(e.boss?16:e.st||e.elite?11:7),sz=e.boss?.32:.13;
  for(let i=0;i<n;i++){const o=SHP[shI++%SHP.length];o.m.material.color.copy(col);o.m.position.copy(c);o.s=sz*(.6+Math.random()*.8);o.m.scale.setScalar(o.s);o.m.rotation.set(Math.random()*6,Math.random()*6,0);const a=Math.random()*6.283,r=2+Math.random()*4;o.vx=Math.cos(a)*r;o.vz=Math.sin(a)*r;o.vy=3+Math.random()*4;o.t=o.t0=.55+Math.random()*.35;o.m.visible=true}}
@@ -1396,7 +1415,8 @@ ENT.rsh.attack=function(e,P,d,p){if(d<2.4&&pos.y<3&&e.cd<=0&&TK.rush.has(e)){e.c
 
 // ---- enemies/types/shield.js ----
 // Escudo: gira devagar (flanqueie) e avança direto até 12 m
-ENT.arm.turn=1.3;
+// meia-volta (180°) em ~3,4 s: era 1,3 rad/s (2,4 s); +1 s a pedido do Pedro (11 out 2026)
+ENT.arm.turn=Math.PI/(Math.PI/1.3+1);
 ENT.arm.plan=function(e,P,dt,dx,dz,d,p){if(d>12){P.tx=pos.x;P.tz=pos.z}P.ch=.5};
 
 // ---- enemies/types/bomber.js ----
@@ -1882,10 +1902,11 @@ for(let i=0;i<J.holes;i++){const m=new THREE.Mesh(VG.pl,MHo);m.visible=false;S.a
 let qI=0,hI=0;
 function scorch(x,z,s){const m=QP[qI++%gqL(QP)];m.position.set(x,.03+(qI%7)*.001,z);m.scale.set(s,s,1);m.rotation.z=Math.random()*6;m.visible=true}
 function hole(p,n){const m=HP[hI++%gqL(HP)];m.position.copy(p).addScaledVector(n,.02);m.rotation.set(0,0,0);if(n.y>.5)m.rotation.x=-Math.PI/2;else m.rotation.y=Math.atan2(n.x,n.z);m.scale.setScalar(.16+Math.random()*.06);m.visible=true}
-const MSHL=lam(0xc9a227),MSHC={},SHL=[];
-for(let i=0;i<J.shells;i++){const m=new THREE.Mesh(VG.box,MSHL);m.scale.set(.025,.025,.06);m.visible=false;S.add(m);SHL.push({m,t:0})}
+// cápsulas: uma reserva instanciada (ipool, gfx/assets.js); o "material" de cada uma é só a cor do tipo de arma
+const MSHC={},SHL=[],SHLP=ipool(VG.box,lam(0xffffff),J.shells);
+for(let i=0;i<J.shells;i++){const m=ipObj(SHLP);m.material=MSHC[0xc9a227]={color:new THREE.Color(0xc9a227)};m.scale.set(.025,.025,.06);SHL.push({m,t:0})}
 let slI=0;
-function shell(){const o=SHL[slI++%gqL(SHL)],G=J.gun[w.ty]||J.gun.pistol,k=w.ty=='shotgun'?1.1:w.ty=='smg'?.8:1;o.m.material=MSHC[G.sc]||(MSHC[G.sc]=lam(G.sc));o.m.scale.set(.022*k,.022*k,.05*k);o.m.position.copy(cam.localToWorld(V0.set(.2,-.14,-.42)));const rx=Math.cos(yaw),rz=-Math.sin(yaw),s=1.6+Math.random()*1.2;o.vx=rx*s+vx*.9;o.vz=rz*s+vz*.9;o.vy=2+Math.random()*1.5;o.fl=Math.max(0,pos.y-1.6)+.015;o.b=0;o.t=J.shellT;o.m.visible=true;o.m.rotation.set(Math.random()*6,Math.random()*6,0)}
+function shell(){const o=SHL[slI++%gqL(SHL)],G=J.gun[w.ty]||J.gun.pistol,k=w.ty=='shotgun'?1.1:w.ty=='smg'?.8:1;o.m.material=MSHC[G.sc]||(MSHC[G.sc]={color:new THREE.Color(G.sc)});o.m.scale.set(.022*k,.022*k,.05*k);o.m.position.copy(cam.localToWorld(V0.set(.2,-.14,-.42)));const rx=Math.cos(yaw),rz=-Math.sin(yaw),s=1.6+Math.random()*1.2;o.vx=rx*s+vx*.9;o.vz=rz*s+vz*.9;o.vy=2+Math.random()*1.5;o.fl=Math.max(0,pos.y-1.6)+.015;o.b=0;o.t=J.shellT;o.m.visible=true;o.m.rotation.set(Math.random()*6,Math.random()*6,0)}
 function shellTick(dt){for(const o of SHL){if(o.t<=0)continue;o.t-=dt;if(o.t<=0){o.m.visible=false;continue}const m=o.m;if(m.position.y>o.fl||o.vy>0){o.vy-=22*dt;m.position.x+=o.vx*dt;m.position.y+=o.vy*dt;m.position.z+=o.vz*dt;m.rotation.x+=dt*14;
  if(m.position.y<=o.fl){m.position.y=o.fl;if(o.b++<1){o.vy*=-.35;o.vx*=.4;o.vz*=.4}else{o.vy=o.vx=o.vz=0;m.rotation.x=Math.PI/2}}}}}
 function juiceFrame(dt,now){trauma=Math.max(0,trauma-J.trDecay*dt);const a=trauma*trauma,t=now/1000*18;shY=nzf(t,1)*J.trMax*a;shP=nzf(t,7)*J.trMax*a;shR=nzf(t,13)*J.trRoll*a;
@@ -1919,7 +1940,7 @@ function puffTick(dt){for(const o of PUF){if(o.t<=0)continue;o.t-=dt;if(o.t<=0){
 const IMQ=[],TXRG=ctex(64,64,x=>{x.strokeStyle='#fff';x.lineWidth=7;x.shadowColor='#fff';x.shadowBlur=8;x.beginPath();x.arc(32,32,22,0,7);x.stroke()}),IMR=[];
 for(let i=0;i<12;i++){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:TXRG,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));s.visible=false;S.add(s);IMR.push({s,t:0})}
 // fagulhas: riscos brilhantes que saltam do impacto e caem (aditivos, visíveis no escuro)
-const SPS=[];for(let i=0;i<48;i++){const m=new THREE.Mesh(VG.box,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));m.visible=false;S.add(m);SPS.push({m,t:0,v:new THREE.Vector3()})}
+const SPS=[],SPSP=ipool(VG.box,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}),48,{add:1});for(let i=0;i<48;i++)SPS.push({m:ipObj(SPSP),t:0,v:new THREE.Vector3()})
 let irI=0,sfI=0;
 function sparks(p,n,col,nm,ds){ds=ds||1;for(let i=0;i<n;i++){const o=SPS[sfI++%gqL(SPS)];o.m.position.copy(p);o.m.material.color.copy(col);const a=Math.random()*6.283,r=3+Math.random()*4;
  o.v.set(Math.cos(a)*r,2+Math.random()*4,Math.sin(a)*r);if(nm)o.v.addScaledVector(nm,4);else o.v.x+=(pos.x-p.x)*.5,o.v.z+=(pos.z-p.z)*.5;o.t=o.d=.18+Math.random()*.14;o.s=ds;o.m.visible=true}}
@@ -2330,7 +2351,7 @@ window.DBG=DBG;
 let last=performance.now();
 function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-last)/1000);last=now;
  if(st=='play'){juiceFrame(dt,now);if(hs>0)hs-=dt;else{let d2=dt;if(slow>0){slow-=dt;d2*=J.slowmo}tick(d2)}}else shP=shY=shR=rk=0;
- cam.position.copy(pos);cam.rotation.set(pitch+shP+rk+mlP,yaw+shY+mlY,shR+mlR);cam.updateMatrixWorld();draw();rdr()}
+ cam.position.copy(pos);cam.rotation.set(pitch+shP+rk+mlP,yaw+shY+mlY,shR+mlR);cam.updateMatrixWorld();draw();ipSync();trpSync();rdr()}
 // Um passo de simulação: cada sistema na mesma ordem de antes
 function tick(dt){T+=dt;
  updatePlayer(dt);
