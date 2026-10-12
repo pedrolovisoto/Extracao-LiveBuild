@@ -363,15 +363,23 @@ textarea{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default
 .nvf{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-shrink:0}.nvf .pzbt{height:48px}#scr .nvf #go{margin:0;padding:0 30px;min-width:200px}
 @container (max-width:700px){.nvg{gap:6px}.nvk{padding:9px}}
 body:not(.jg) #hud{visibility:hidden}
+/* Treino: instrução no alto, botão em destaque e dicas de tela */
+#tut{left:50%;transform:translateX(-50%);top:calc(50px + env(safe-area-inset-top,0px));width:max-content;max-width:min(50vw,440px);background:#0b0f14d9;border:1px solid var(--line);border-left:3px solid var(--ac);border-radius:8px;padding:5px 11px;font-size:13px;font-weight:600;line-height:1.35;text-align:center;display:none}
+#tut small{display:block;color:#9fb0c2;font-weight:500;font-size:11px;letter-spacing:.06em}
+.tuhl{animation:tuhl 1.1s ease-in-out infinite}@keyframes tuhl{50%{box-shadow:0 0 0 4px var(--ac),0 0 20px var(--ac)}}
+#hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));width:max-content;max-width:min(560px,92vw);z-index:60;background:#0b0f14f2;border:1px solid var(--line);border-left:3px solid var(--ac);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.45;box-shadow:0 6px 20px #000a;cursor:pointer}
+#hint b{color:var(--ac)}#hint small{display:block;margin-top:4px;color:#9fb0c2;font-size:11px}
+.tuw{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:10px;text-align:left}.tuw p{font-size:15px;line-height:1.5;margin:0}.tuw b{color:var(--ac)}.tuw small{color:#9fb0c2;font-size:12px}.tuw #go{align-self:flex-start}
 </style>
 </head><body>
 <div id="app">
 <div id="hud">
 <div id="tl" class="t"><div id="hpb"><div id="hpf"></div></div><div id="obj" style="margin-top:6px"></div><div id="drs"></div><div id="zmap" role="img" aria-label="Mapa de zonas"></div></div><div id="exb" class="t"><i></i><b></b></div>
 <div id="tr" class="t"><div id="tm"></div><div id="wn"></div><div id="am"></div><div id="eq"></div></div>
-<div id="cmp" class="t"></div><div id="dm"></div>
+<div id="tut" class="t" role="status" aria-live="polite"></div><div id="cmp" class="t"></div><div id="dm"></div>
 <div id="pk"><button id="bsc">DESMONTAR</button><button id="bp">PEGAR</button><button id="bfu">FUNDIR</button></div><button id="bj">PULO</button><button id="bpz">II</button><button id="bi">CURA <span class="in">0</span></button><button id="bd">DASH <span class="dd">●●</span></button><button id="ba">AUTO: ON</button><button id="bf">FOGO</button>
 </div>
+<div id="hint" role="status" onclick="hintOff(1)" style="display:none"></div>
 <div id="pz" style="display:none"><h1>PAUSADO</h1><div id="pzc"></div></div>
 <div id="scr"><nav id="rail" aria-label="Base"></nav><div id="bhd"></div><h1 id="st">EXTRAÇÃO</h1><p id="sd"></p><div id="cards"></div><div id="fwrow" style="margin-top:8px"></div><div id="hub"></div></div>
 </div>
@@ -523,6 +531,9 @@ const OP={v:1,ms:['hunt','sab','ret','purge'],heal:.5,shop:2,price:[60,80,110,15
 // Extração: zona de raio r; entrar chama a nave; segurar t segundos (fora da zona a contagem para, mas não volta).
 // Ondas a cada `wave` s com w0, w0+1, w0+2... inimigos; antes de chamar a nave chega +1 reforço a cada `greed` s. cap = limite de inimigos vivos.
 const EXT={r:7,t:15,wave:8,w0:2,greed:30,cap:30};
+// Treino (game/tutorial.js, docs/11-tutorial.md): vida no começo do combate (fração), vida do gerador, tempo até o Escudo ser opcional (s),
+// extração curta sem ondas, recompensa só na primeira vez que termina (créditos e as amostras pegas)
+const TUT={hp:.55,gen:120,shT:40,am:2,cr:150,ext:{r:6,t:8,wave:1e9,w0:0,greed:1e9}};
 // Amostras por missão, por ameaça [mín, máx], ficam nas zonas de amostras; extras: elite (por abate), objetivo tático e chefe
 const AMO={th:[null,[3,5],[4,6],[5,8],[6,10],[8,12]],elite:1,tac:2,boss:3};
 // Recompensas por zona: n = [mín, máx] de zonas com recompensa (a 1ª é sempre amostras); see = distância do marcador na HUD; w = peso no sorteio
@@ -557,7 +568,7 @@ const fmt=t=>(t/60|0)+':'+String(t%60|0).padStart(2,'0');
 const nzf=(t,s)=>Math.sin(t*1.7+s)*.5+Math.sin(t*2.9+s*1.3)*.3+Math.sin(t*5.3+s*2.1)*.2;
 // ===== EVENTOS =====
 // on(nome, fn) assina; emit(nome, dado) avisa módulos (FXM), perks (PKH) e assinantes.
-// Eventos: shot, dash, kill, death (antes de o inimigo sumir), playerHit {n,src}, threat {x,z}, block, secondChance
+// Eventos: shot, dash, jump, jump2, lock (travou um alvo), reload (pente vazio), extract (nave chamada), pick, kill, death (antes de o inimigo sumir), playerHit {n,src}, threat {x,z}, block, secondChance
 const BUS={};
 function on(n,f){(BUS[n]||(BUS[n]=[])).push(f);return()=>{const l=BUS[n];l.splice(l.indexOf(f),1)}}
 function emit(n,a){fxEvt(n,a);const f=FXM[MOD];if(f&&f[n])f[n](a);if(PKH[n])PKH[n](a);const l=BUS[n];if(l)for(const g of l.slice())g(a)}
@@ -927,11 +938,13 @@ function mtUp(m){for(let v=(m.v|0)+1;v<=MTV;v++)(MTA[v]||[]).forEach(k=>m[k]=mtD
 function cfDef(){const m=matchMedia('(prefers-reduced-motion: reduce)').matches;return{sens:1,ts:1.5,vy:1,ac:.3,as:1,lh:0,hap:1,bs:1,lay:'th',dr:100,tt:180,rv:0,sh:m?0:1,cm:m?0:1,fl:1,zm:1,q:matchMedia('(pointer:fine)').matches?2:1}}
 // arma liberada: comprada no Laboratório ou liberada por enquanto pela opção de teste "Todas as armas" (SV.ua, no menu)
 const wpUn=k=>!!TY[k]&&(!!SV.ua||!!(SV.lab.wp||{})[k]);
-(function(){let o={};try{o=JSON.parse(localStorage.getItem('ext_v1'))||{}}catch(_){}SV=Object.assign({cr:0,sk:{},dr:0,fw:'sh',fu:{sh:1}},o);['mob','aim','sur'].forEach(k=>SV.sk[k]=SV.sk[k]|0);SV.mu=SV.mu||{};SV.cs=Object.assign({stim:0,ovr:0},SV.cs||{});SV.th=SV.th||1;SV.tm=SV.tm||1;SV.mod=SV.mod||'';SV.ci=SV.ci||'stim';if(SV.op&&SV.op.v!==OP.v)SV.op=null;SV.am=SV.am|0;SV.mt=mtUp(Object.assign(mtDef(),{v:0},SV.mt||{}));SV.lab=Object.assign({mk:{vig:1},fx:Object.fromEntries(LAB.fx0.map(k=>[k,1])),lg:{},core:0,kit:0},SV.lab||{});arsLoad();SV.cf=Object.assign(cfDef(),SV.cf||{})})();
+(function(){let o={};try{o=JSON.parse(localStorage.getItem('ext_v1'))||{}}catch(_){}SV=Object.assign({cr:0,sk:{},dr:0,fw:'sh',fu:{sh:1}},o);['mob','aim','sur'].forEach(k=>SV.sk[k]=SV.sk[k]|0);SV.mu=SV.mu||{};SV.cs=Object.assign({stim:0,ovr:0},SV.cs||{});SV.th=SV.th||1;SV.tm=SV.tm||1;SV.mod=SV.mod||'';SV.ci=SV.ci||'stim';if(SV.op&&SV.op.v!==OP.v)SV.op=null;SV.am=SV.am|0;SV.mt=mtUp(Object.assign(mtDef(),{v:0},SV.mt||{}));SV.lab=Object.assign({mk:{vig:1},fx:Object.fromEntries(LAB.fx0.map(k=>[k,1])),lg:{},core:0,kit:0},SV.lab||{});arsLoad();SV.cf=Object.assign(cfDef(),SV.cf||{});tutLoad()})();
 // copiar: põe o texto no campo (só leitura enquanto copia, para o iPhone/Android não abrir o teclado), seleciona e tenta a área de transferência (API nova; sem ela, execCommand). O botão avisa se copiou.
 function cpy(t,txt,b){t.value=txt;const ro=t.readOnly;t.readOnly=true;try{t.focus({preventScroll:true})}catch(_){}t.select();t.setSelectionRange(0,txt.length);let ok=0;try{ok=document.execCommand('copy')}catch(_){}t.readOnly=ro;
  const fb=v=>{if(!b)return;const o=b.dataset.o||(b.dataset.o=b.textContent);b.textContent=v?'Copiado!':'Selecionado: copie à mão';clearTimeout(b._t);b._t=setTimeout(()=>b.textContent=o,1800)};
  if(ok)return fb(1);try{navigator.clipboard.writeText(txt).then(()=>fb(1),()=>fb(0))}catch(_){fb(0)}}
+// Treino (doc 11): save que já jogou (registro, operação, créditos ou amostras) conta como Treino feito e com as dicas de tela vistas
+function tutLoad(){if(!SV.tut&&((SV.log||[]).length||SV.op||SV.cr>0||SV.am>0)){SV.tut={s:0,f:1};SV.hints=SV.hints||{op:1,arm:1,nave:1,lab:1,ars:1}}SV.hints=SV.hints||{}}
 function exp(b){cpy($('sv'),btoa(JSON.stringify(SV)),b)}
 function imp(){try{SV=Object.assign(SV,JSON.parse(atob($('sv').value.trim())));save();hub()}catch(_){$('sv').value='Código inválido'}}
 // Arsenal e maestria (doc 08): armas liberadas (SV.lab.wp), último tipo escolhido (SV.arsP), xp de maestria (SV.mst).
@@ -960,7 +973,7 @@ const ec=e=>new THREE.Vector3(e.m.position.x,e.m.position.y+(e.cy!=null?e.cy:e.e
 function doJump(){if(st!='play')return;if(grounded||co>0)jumpNow();else if(jumps>0){vy=C.jump2*Math.sqrt(JM);jumps--;snd('jump2');emit('jump2')}else jb=J.jBuf}
 function doDash(){if(st!='play')return;if(dashC<1||dashCd>0){db=J.dBuf;return}dashNow()}
 function dashNow(){dashC--;dashCd=.25;snd('dash');emit('dash');dashT=C.dashT;if(Math.hypot(wx,wz)>.1){const l=Math.hypot(wx,wz);ddx=wx/l;ddz=wz/l}else{ddx=-Math.sin(yaw);ddz=-Math.cos(yaw)}}
-function jumpNow(){vy=C.jump*Math.sqrt(JM);grounded=false;co=0;snd('jump')}
+function jumpNow(){vy=C.jump*Math.sqrt(JM);grounded=false;co=0;snd('jump');emit('jump')}
 function land(v){snd('land',1,cl((v-9)/14,.3,1.2));if(v>15){vib([14]);addTr(cl((v-15)/25,0,.3))}}
 // Dano no jogador. O feedback (clarão, direção, tremor, som) fica em fx/juice.js via eventos.
 function hit(n,sx,sz,src){n*=TD*AR;if(inv>0)return;if(sx!=null)emit('threat',{x:sx,z:sz});if(DW=='sh'&&dsh){dsh=false;dcd=SHR[SV.dr-1];emit('block');return}
@@ -1120,14 +1133,14 @@ function updateLock(dt){
  const dir=fwd(),cand=[];E.forEach(e=>{e.q=0;const c=ec(e),v=c.clone().sub(pos),d=v.length();
   if(d<=wRange()){const a=Math.acos(cl(v.dot(dir)/d,-1,1));if(a<wCone()*CN*SV.cf.as&&!(e.ty=='arm'&&fr(e))&&(los(pos.x,pos.z,c.x,c.z,c.y)||hasFx('thr')&&d<=15))cand.push({e,a})}});
  cand.sort((a,b)=>a.a-b.a);cand.slice(0,w.slots+SL).forEach(o=>o.e.q=1);
- E.forEach(e=>{const l0=e.lock;e.lock=e.q?Math.min(1,e.lock+dt*(e.mk>0?1.4:1)/(w.lock*LK*(ovT>0?.2:1)*lockFx()*(T<supT?ESP.mg.sup:1))):Math.max(0,e.lock-dt*2);if(l0<1&&e.lock>=1)snd('lock')});
+ E.forEach(e=>{const l0=e.lock;e.lock=e.q?Math.min(1,e.lock+dt*(e.mk>0?1.4:1)/(w.lock*LK*(ovT>0?.2:1)*lockFx()*(T<supT?ESP.mg.sup:1))):Math.max(0,e.lock-dt*2);if(l0<1&&e.lock>=1){snd('lock');emit('lock',e)}});
  return dir}
 // Cadência, recarga e recuo do modelo da arma
 function updateWeapon(dt,dir){
  if(reload>0){reload-=dt;if(reload<=0){ammo=w.mag;snd('rl');gyv-=1.4;vkT=0}}
  const locked=E.some(e=>e.lock>=1),wantFire=fire||keys.KeyF||mf||(auto&&locked);
  if(TY[w.ty].ml){if(wantFire&&T>=nextShot){const late=T-nextShot;nextShot=T+1/w.rate;melee(dir,late)}meleeAnim(dt);return}
- if(wantFire&&reload<=0&&T>=nextShot){ammo--;nextShot=T+1/w.rate;gunKick();shell();if(camOK())rk+=J.recoil[w.ty];if(ammo<=0)reload=1.3;shoot(dir);emit('shot');snd(w.ty=='shotgun'?'sg':w.ty=='smg'?'smg':'pst')}
+ if(wantFire&&reload<=0&&T>=nextShot){ammo--;nextShot=T+1/w.rate;gunKick();shell();if(camOK())rk+=J.recoil[w.ty];shoot(dir);emit('shot');if(ammo<=0){reload=1.3;emit('reload')}snd(w.ty=='shotgun'?'sg':w.ty=='smg'?'smg':'pst')}
 }
 // Caixa de loot mais próxima (para PEGAR e o painel de comparação)
 function updateNear(){
@@ -1364,7 +1377,7 @@ function shardTick(dt){SHP.forEach(o=>{if(o.t<=0)return;o.t-=dt;if(o.t<=0){o.m.v
 // ---- enemies/ai.js ----
 // Percepção, tiro inimigo, cobertura e IA tática compartilhada
 const fr=e=>{const f=e.m.rotation.y,dx=pos.x-e.m.position.x,dz=pos.z-e.m.position.z;return(Math.sin(f)*dx+Math.cos(f)*dz)/(Math.hypot(dx,dz)||1)>.5};
-function efire(e,p,ch,dm){if(!(e.ab>T)&&!tok('gun',e,TOKT)){e.cd=.35+Math.random()*.4;if((e.dn=(e.dn||0)+1)>3&&!e.elite&&e.ty==''){e.role='flk';e.dn=0}return}e.ns=(e.ns||0)+1;ch=e.ns<=TV.miss?0:Math.min(.95,ch*TV.acc);tracer(QO.set(p.x,p.y+1.5,p.z),QE.set(pos.x,pos.y+-.3,pos.z),0xff5555);if(Math.random()<ch)hit(dm,p.x,p.z,e.elite?'Alvo':ENT[e.ty].n)}
+function efire(e,p,ch,dm){if(!(e.ab>T)&&!tok('gun',e,TOKT)){e.cd=.35+Math.random()*.4;if((e.dn=(e.dn||0)+1)>3&&!e.elite&&e.ty==''){e.role='flk';e.dn=0}return}e.ns=(e.ns||0)+1;ch=e.ns<=TV.miss||e.nm?0:Math.min(.95,ch*TV.acc);tracer(QO.set(p.x,p.y+1.5,p.z),QE.set(pos.x,pos.y+-.3,pos.z),0xff5555);if(Math.random()<ch)hit(dm,p.x,p.z,e.elite?'Alvo':ENT[e.ty].n)}
 function cover(e,minD,maxD){let b=null,bs=30;const p=e.m.position;for(const w of walls){const dx=w.x-pos.x,dz=w.z-pos.z,d=Math.hypot(dx,dz)||1,r=Math.max(w.hw,w.hd)+1.6,cx=w.x+dx/d*r,cz=w.z+dz/d*r,dp=Math.hypot(cx-pos.x,cz-pos.z);
  if(dp<minD||dp>maxD||Math.abs(cx)>52||Math.abs(cz)>52||inW(cx,cz,.6))continue;const sc=Math.hypot(cx-p.x,cz-p.z);if(sc<bs){bs=sc;b={x:cx,z:cz}}}return b}
 // IA tática compartilhada. Cada tipo define em enemies/types/*.js:
@@ -1744,16 +1757,18 @@ const MS={
 // Extração: a nave abre a ~2 zonas; entrar na zona chama a nave. Segurar EXT.t s dentro dela (fora, a contagem para, mas não volta),
 // com ondas a cada EXT.wave s que crescem. Antes de chamar a nave (ganância leve), +1 reforço a cada EXT.greed s.
 let extC=false,extW=0;
+// números da extração da missão atual (o Treino usa a sua, TUT.ext)
+const XT=()=>MS[M].ext||EXT;
 function startExtract(){snd('alert');phase='extract';extC=false;extW=0;wave=0;const p=LVext();ext=mkRing(p.x,p.z,0x4ade80,EXT.r);sqWave(Math.round(C.reinf*EN),24)}
-const inExt=()=>!!ext&&Math.hypot(pos.x-ext.position.x,pos.z-ext.position.z)<EXT.r;
-const objT=()=>(phase=='extract'?(extC?'Nave em '+Math.ceil(EXT.t-extP)+' s'+(inExt()?'':' — volte à zona!'):'Vá até a extração e chame a nave'):MS[M].obj())+(carry?' 📦':'');
+const inExt=()=>!!ext&&Math.hypot(pos.x-ext.position.x,pos.z-ext.position.z)<XT().r;
+const objT=()=>(phase=='extract'?(extC?'Nave em '+Math.ceil(XT().t-extP)+' s'+(inExt()?'':' — volte à zona!'):'Vá até a extração e chame a nave'):MS[M].obj())+(carry?' 📦':'');
 function extWave(n){if(E.length>=EXT.cap)return;sqWave(n,26)}
 // Fase de extração, recompensas das zonas e update da missão; devolve true se a partida acabou
-function updateMission(dt){zrTick(dt);
- if(phase=='extract'){const iz=inExt();wave+=dt;
-  if(!extC){if(iz){extC=true;wave=0;snd('alert');vib([30])}else if(wave>EXT.greed){wave=0;extWave(1)}}
-  if(extC){if(wave>EXT.wave){wave=0;extW++;extWave(Math.round((EXT.w0+extW-1)*EN))}
-   if(iz){extP+=dt;if((extTk-=dt)<=0){extTk=1;const k=extP/EXT.t;snd('ext',1+k*1.2);vib([4+Math.round(k*26)])}if(extP>=EXT.t){end(true);return true}}}}
+function updateMission(dt){zrTick(dt);if(MS[M].tick)MS[M].tick(dt);if(st!='play')return true;
+ if(phase=='extract'){const iz=inExt(),X=XT();wave+=dt;
+  if(!extC){if(iz){extC=true;wave=0;snd('alert');vib([30]);emit('extract')}else if(wave>X.greed){wave=0;extWave(1)}}
+  if(extC){if(wave>X.wave){wave=0;extW++;extWave(Math.round((X.w0+extW-1)*EN))}
+   if(iz){extP+=dt;if((extTk-=dt)<=0){extTk=1;const k=extP/X.t;snd('ext',1+k*1.2);vib([4+Math.round(k*26)])}if(extP>=X.t){end(true);return true}}}}
  if(phase!='extract'&&MS[M].update)MS[M].update(dt);
  return st!='play'}
 // Objetivo cumprido: um item um degrau acima (mínimo Rara)
@@ -1761,18 +1776,20 @@ function objDrop(x,z){crate(x,z,lootItem({x,z,up:1,min:2}))}
 
 // ---- game/flow.js ----
 // Fluxo: preparar partida, começar, pausar, sair e tela final
-function init(id,ms,bi,op){QP.forEach(m=>m.visible=false);HP.forEach(m=>m.visible=false);SHL.forEach(o=>{o.t=0;o.m.visible=false});IMQ.length=0;trauma=hs=slow=rk=0;streak=stT=stTT=0;co=jb=db=0;gy=gyv=0;dirs=[];ripples=[];dmCd=0;extTk=0;buildMap(BIO[bi]||BIO.cx,id);bioInit(BIO[bi]||BIO.cx,LV.seed);bombs.forEach(b=>{S.remove(b.m);if(b.g)S.remove(b.g)});bombs=[];E.forEach(e=>S.remove(e.m));crates.forEach(c=>S.remove(c.m));tr.forEach(t=>S.remove(t.l));crates.forEach(c=>c.sh&&S.remove(c.sh));TRP.forEach(o=>{o.t=0;o.l.visible=false});SHP.forEach(o=>{o.t=0;o.m.visible=false});FL.visible=false;[ext,item,hzm].forEach(o=>o&&S.remove(o));E=[];SQ=[];shotT=-9;espReset();crates=[];tr=[];ext=item=hzm=hz=tgt=null;
- M=id;md=ms;const g=k=>md.includes(k);HM=g('glass')?2:1;EM=g('tough')?1.5:1;EN=g('horde')?1.6:1;LM=g('rich')?2:1;DET=g('fog')?20:34;const bo=BIO[bi]||BIO.cx;FOGB[0]=g('fog')?6:bo.fn;FOGB[1]=g('fog')?34:bo.ff;gqFog();EQ.aim=EQ.mob=EQ.core=null;fxS={};shots=0;lastSrc='';ARSA=ARSF?ARSF.slice():op?opArs(op).ars.slice():(ARSV||arsCur());ARSV=null;const a0=ARSF?SV.arsP:op?op.ars0:ARSA[0];RUN={bi,picks:[],scr:[],fuse:[],mx:{}};LS=0;OPK=0;SCR=0;BAD=0;SLH=[];w=null;calcBuild();CT=op&&op.cs||'';SM=CT=='glass'?2:1;TH=op?op.th:SV.th;TV=THR[TH]||THR[1];TD=TV.dmg;EM*=TV.hp;EN*=TV.reinf;TK.gun.clear();TK.rush.clear();MOD=SV.mu[SV.mod]?SV.mod:'';spdT=0;ovT=0;used=0;inv=0;DW=SV.dr>0?SV.fw:null;dsh=DW=='sh';dcd=0;drn.visible=!!DW;if(DW){drn.material.color.set(DW=='sh'?0x22d3ee:DW=='sn'?0xfbbf24:0xc084fc);sph.visible=dsh;drn.position.set(0,1.4,50)}
+function init(id,ms,bi,op){QP.forEach(m=>m.visible=false);HP.forEach(m=>m.visible=false);SHL.forEach(o=>{o.t=0;o.m.visible=false});IMQ.length=0;trauma=hs=slow=rk=0;streak=stT=stTT=0;co=jb=db=0;gy=gyv=0;dirs=[];ripples=[];dmCd=0;extTk=0;tutOff();if(MS[id].map)MS[id].map(BIO[bi]||BIO.cx);else buildMap(BIO[bi]||BIO.cx,id);bioInit(BIO[bi]||BIO.cx,LV.seed);bombs.forEach(b=>{S.remove(b.m);if(b.g)S.remove(b.g)});bombs=[];E.forEach(e=>S.remove(e.m));crates.forEach(c=>S.remove(c.m));tr.forEach(t=>S.remove(t.l));crates.forEach(c=>c.sh&&S.remove(c.sh));TRP.forEach(o=>{o.t=0;o.l.visible=false});SHP.forEach(o=>{o.t=0;o.m.visible=false});FL.visible=false;[ext,item,hzm].forEach(o=>o&&S.remove(o));E=[];SQ=[];shotT=-9;espReset();crates=[];tr=[];ext=item=hzm=hz=tgt=null;
+ M=id;md=ms;const g=k=>md.includes(k);HM=g('glass')?2:1;EM=g('tough')?1.5:1;EN=g('horde')?1.6:1;LM=g('rich')?2:1;DET=g('fog')?20:34;const bo=BIO[bi]||BIO.cx;FOGB[0]=g('fog')?6:bo.fn;FOGB[1]=g('fog')?34:bo.ff;gqFog();EQ.aim=EQ.mob=EQ.core=null;fxS={};shots=0;lastSrc='';ARSA=ARSF?ARSF.slice():op?opArs(op).ars.slice():(ARSV||arsCur());ARSV=null;const a0=ARSF?SV.arsP:op?op.ars0:ARSA[0];RUN={bi,picks:[],scr:[],fuse:[],mx:{}};LS=0;OPK=0;SCR=0;BAD=0;SLH=[];w=null;calcBuild();CT=op&&op.cs||'';SM=CT=='glass'?2:1;TH=MS[id].th||(op?op.th:SV.th);TV=THR[TH]||THR[1];TD=TV.dmg;EM*=TV.hp;EN*=TV.reinf;TK.gun.clear();TK.rush.clear();MOD=SV.mu[SV.mod]?SV.mod:'';spdT=0;ovT=0;used=0;inv=0;DW=SV.dr>0?SV.fw:null;dsh=DW=='sh';dcd=0;drn.visible=!!DW;if(DW){drn.material.color.set(DW=='sh'?0x22d3ee:DW=='sn'?0xfbbf24:0xc084fc);sph.visible=dsh;drn.position.set(0,1.4,50)}
  pos.set(0,1.6,50);vx=vz=vy=0;jumps=1;carry=false;grounded=true;dashC=DN;dashT=0;dashR=0;dashCd=0;yaw=0;pitch=0;hp=MH;T=0;kills=0;extP=0;wave=0;rr=0;lastHit=-9;nextShot=0;hitT=0;hprog=0;hw=0;tgtName=NAMES[Math.random()*NAMES.length|0];equip(genItem('wp',0,a0));calcBuild();hp=MH;if(op)opApply(op);dashC=DN;
  // inimigos do início em esquadras de 3 a 5 (com Sargento), espalhadas pelas zonas como antes
  let nE=Math.round(C.nEnemies*EN*MS[M].en);while(nE>0){let k=Math.min(nE,SQD.n[0]+(Math.random()*(SQD.n[1]-SQD.n[0]+1)|0));if(nE-k>0&&nE-k<SQD.n[0])k=nE<=SQD.n[1]?nE:nE-SQD.n[0];const p=LVspawnPt(22),s=sqMk(p.x,p.z,k,false);if(s)sqAmbTry(s);nE-=k}
  MS[M].setup();
+ // missão sem loot nem zonas do mapa (Treino): ela mesma põe as suas
+ if(MS[M].bare)return;
  // loot do mapa: caixas no chão (as primeiras forçam os tipos sorteados do arsenal) e caixas no alto com raridade mínima; contrato Horda: +1 degrau no chão
  const hi=LV.high.slice().sort(()=>Math.random()-.5),nH=Math.min(hi.length,Math.round((2+(Math.random()<.5?1:0))*LM)),nG=Math.round(LOOT.ground*LM)+Math.max(0,2-nH);
  const FT=ARSA.filter(k=>k!=a0);for(let i=0;i<nG;i++){const p=rp(8);if(CT=='horde')p.up=1;crate(p.x,p.z,i<FT.length?lootItem(p,'wp',FT[i]):lootItem(p))}
  for(let i=0;i<nH;i++){const q=hi[i];crate(q.x,q.z,lootItem({x:q.x,z:q.z,min:LOOT.hiMin[Math.min(LS,2)]}),q.y)}
  zrInit()}
-function startM(id,ms,bi,op){if(endFin)endFin();ac();if(!pc)fs();if(pc&&!noLock)lockM();OPR=op||null;init(id,ms,bi,OPR);st='play';document.body.classList.add('jg');$('scr').style.display='none'}
+function startM(id,ms,bi,op){if(endFin)endFin();hintOff(1);ac();if(!pc)fs();if(pc&&!noLock)lockM();OPR=op||null;init(id,ms,bi,OPR);st='play';document.body.classList.add('jg');$('scr').style.display='none'}
 function pause(){if(st!='play')return;st='pause';stick=look=null;fire=mf=false;PZV='main';pzR();$('pz').style.display='flex';try{document.pointerLockElement&&document.exitPointerLock()}catch(_){}}
 function resume(){if(st!='pause')return;$('pz').style.display='none';st='play';if(pc&&!noLock)lockM()}
 function quit(){mstEnd(false);scrReset();const op=OPR;if(op){OPR=null;opQuit()}$('st').style.borderColor='';$('pz').style.display='none';st='menu';$('st').textContent='OPERAÇÕES';$('sd').textContent=op?'Missão abandonada. A operação terminou.':'Missão abandonada.';cards();$('scr').style.display='flex'}
@@ -1780,7 +1797,7 @@ function fs(){try{const d=document.documentElement;const rf=d.requestFullscreen|
 // tela de resultado/menu: esconde a área da Base/nave/tela de armas e volta as cartas
 // Volta aos menus: solta o mouse (PC) e esconde a HUD por trás das telas (classe jg só durante a missão)
 const scrReset=()=>{ARC_=null;$('hub').onclick=null;try{document.pointerLockElement&&document.exitPointerLock()}catch(_){}document.body.classList.remove('jg');vw('menu')};
-function end(win){st='end';scrReset();const op=OPR,on=op?op.n+1:0,om=op?opEnd(win):'';const mm=1+md.length*.5+(TH-1)*.25,tb=win?Math.max(0,300-T|0):0,b0=win?500:100,pts=Math.round((b0+kills*20+tb)*mm);$('st').textContent=win?(om=='done'?'OPERAÇÃO CONCLUÍDA':op?`MISSÃO ${on}/3 CONCLUÍDA`:'MISSÃO CONCLUÍDA'):(op?'OPERAÇÃO PERDIDA':'VOCÊ MORREU');$('st').style.borderColor=win?'':'#5a6878';const cr=Math.round(pts/6);SV.cr+=cr;if(win)SV.am=(SV.am|0)+AMC;if(win&&TH==SV.tm&&SV.tm<5)SV.tm++;const mg=mstEnd(win);logRun(win,on);save();snd(win?'win':'lose');trauma=0;
+function end(win){if(MS[M].fin)return MS[M].fin(win);st='end';scrReset();const op=OPR,on=op?op.n+1:0,om=op?opEnd(win):'';const mm=1+md.length*.5+(TH-1)*.25,tb=win?Math.max(0,300-T|0):0,b0=win?500:100,pts=Math.round((b0+kills*20+tb)*mm);$('st').textContent=win?(om=='done'?'OPERAÇÃO CONCLUÍDA':op?`MISSÃO ${on}/3 CONCLUÍDA`:'MISSÃO CONCLUÍDA'):(op?'OPERAÇÃO PERDIDA':'VOCÊ MORREU');$('st').style.borderColor=win?'':'#5a6878';const cr=Math.round(pts/6);SV.cr+=cr;if(win)SV.am=(SV.am|0)+AMC;if(win&&TH==SV.tm&&SV.tm<5)SV.tm++;const mg=mstEnd(win);logRun(win,on);save();snd(win?'win':'lose');trauma=0;
  const rows=[[win?'Missão concluída':'Participação','+'+b0],['Abates × '+kills,'+'+kills*20]];if(win)rows.push(['Bônus de tempo','+'+tb]);rows.push(['Risco e ameaça','× '+mm.toFixed(2).replace('.',',')]);rows.push(['Total',pts+' pts']);rows.push(['Créditos','+'+cr+' cr']);
  // Fim (etapa 8): contagem à esquerda, arma final no meio, amostras e maestria à direita; botão principal volta à Base (ou vai para a nave na operação)
  const go=om=='next'?`<button class="pzbt go" id="fgo" onclick="nave()">IR PARA A NAVE ▶</button><button class="pzbt fb" onclick="base()">Voltar à base</button>`:`<button class="pzbt go" id="fgo" onclick="base()">VOLTAR À BASE</button>`;
@@ -1801,7 +1818,7 @@ function amHtml(win){return`<span class="fam${AMC&&!win?' lost':''}">`+(AMC?`<sp
 function logRun(win,on){const it=[w,EQ.aim,EQ.mob,EQ.core].filter(Boolean).map(i=>(i.sl||'wp')+':'+i.r+(i.lg?':'+i.lg:''));
  SV.log=(SV.log||[]).concat([{d:Date.now(),m:M,bi:RUN&&RUN.bi,th:TH,md:md.slice(),win:!!win,T:Math.round(T),k:kills,src:win?'':lastSrc,picks:RUN?RUN.picks:[],eq:it,op:on||0,am:AMC}]).slice(-30)}
 // Maestria (doc 08): xp por abate para o tipo da arma equipada; no fim da partida, vencer ×1,5 e morrer/abandonar ×0,5, somada em SV.mst
-on('kill',e=>{if(st!='play'||!RUN||byDrone||e.st)return;const X=MSTR.xp,k=w.ty;RUN.mx[k]=(RUN.mx[k]||0)+(e.boss?X.boss:e.elite?X.elite:X.kill)});
+on('kill',e=>{if(st!='play'||!RUN||byDrone||e.st||MS[M].hide)return;const X=MSTR.xp,k=w.ty;RUN.mx[k]=(RUN.mx[k]||0)+(e.boss?X.boss:e.elite?X.elite:X.kill)});
 function mstEnd(win){if(!RUN||!RUN.mx)return[];const out=[];for(const k in RUN.mx){const g=Math.round(RUN.mx[k]*(win?MSTR.win:MSTR.lose));if(!g)continue;const a=mstLv(k);SV.mst[k]=(SV.mst[k]|0)+g;out.push({k,g,a,b:mstLv(k)})}RUN.mx={};save();return out}
 function mstHtml(L){const bar=i=>`<span class="mbar"><i style="width:${i.need?Math.round(i.x/i.need*100):100}%"></i></span>`;
  if(!L.length){if(!w||!TY[w.ty])return'';const i=mstInfo(w.ty);return`<span class="fk fm"><span class="fh">Maestria</span><span class="fml">${tyIc(w.ty,'',16)}<b>${TY[w.ty].n}</b> Nv ${i.lv}${bar(i)}</span><small class="pzs">Sem XP nesta missão</small></span>`}
@@ -1884,6 +1901,114 @@ function zrMarks(){for(const r of ZRW){if(r.done)continue;const p=r.e?r.e.m.posi
 // amostras de elites, chefe e objetivo tático; o objetivo tático dá metade das vezes um item Rara+ no lugar
 on('kill',e=>{if(st!='play')return;if(e.boss)AMC+=AMO.boss;else if(e.elite)AMC+=AMO.elite;
  if(e.tac){const x=e.m.position.x,z=e.m.position.z;if(Math.random()<.5)crate(x,z,lootItem({x,z,min:2}));else{AMC+=AMO.tac;snd('rare')}}});
+
+// ---- game/tutorial.js ----
+// Treino (docs/11-tutorial.md): missão curta e jogável, escondida das cartas e da operação (MS.tut.hide).
+// Mapa próprio (tutMap): corredor reto com marcadores, muro baixo, muro alto, vão elétrico, área de tiro, combate, loot, amostras e extração.
+// Passos em TUS: cada um tem texto (por controle: th = celular Polegares, cl = celular Clássico, pc), botão em destaque (hl),
+// ponto de volta ao morrer (cp), set() ao começar e done() que avança sozinho quando o jogador faz a ação (sem botão de próximo).
+// Save: SV.tut = {s: passos feitos, f: terminou alguma vez}; SV.hints = dicas de tela já vistas (partes 5 e 6, hint()).
+let TUI=0,TUQ={},TUE={},TUO=[],TUK='',TUH='';
+// meia largura do corredor e o vão elétrico (z de um lado ao outro)
+const TUW=10,TUV=[14,20];
+const tuC=()=>pc?'pc':SV.cf.lay=='th'?'th':'cl';
+const tuT=(o,c)=>typeof o=='function'?tuT(o(),c):typeof o=='string'?o:o[c||tuC()]||o.th;
+// inimigos do Treino: boneco parado que não morre; soldado (ou Escudo) que erra todos os tiros
+function tuDummy(x,z){SQB=1;const e=spawn(x,z,false,false,'');SQB=0;e.st=1;e.hp=e.max=1e5;return e}
+function tuFoe(x,z,ty){const e=spawn(x,z,false,true,ty||'');e.nm=1;return e}
+const tuOut=e=>!e||!E.includes(e);
+function tuMesh(m){TUO.push(m);return m}
+// ----- mapa -----
+function tutMap(b){gr.material.color.set(b.gc);GRm.material.color.copy(lift(b.gc,.1));GRM.material.color.copy(lift(b.gc,.17));S.background.set(b.bg);S.fog.color.set(b.bg);
+ walls.length=0;LV.high=[];LV.seed=LV.next||1+(Math.random()*999999|0);LV.next=0;LV.tries=1;
+ lvBox(-TUW-.4,0,.4,53,6,'wall');lvBox(TUW+.4,0,.4,53,6,'wall');lvBox(0,52.6,TUW+.8,.4,6,'wall');lvBox(0,-52.6,TUW+.8,.4,6,'wall');
+ lvBox(0,31,TUW,.4,LVC.lowH,'low');lvBox(0,26,TUW,.4,2.4,'wall');
+ lvBox(-5,-14,1.3,.5,LVC.covH,'cov');lvBox(5,-22,1.3,.5,LVC.covH,'cov');lvBox(-6,-30,.5,1.3,LVC.covH,'cov');
+ // a navegação dos inimigos parte da área de combate (eles não passam pelos muros nem vão ao começo)
+ LV.ok=nvBuild(0,-5)>0;const s0=zoneAt(SPAWN.x,SPAWN.z);
+ LV.zones=[...Array(9)].map((_,i)=>({id:i,cx:ZC(i%3),cz:ZC(i/3|0),d:0,arq:'base',a:null,e:null,hold:0,cells:[]}));
+ for(const c of NV.free)LV.zones[zoneAt(nvX(c),nvZ(c))].cells.push(c);
+ LV.zones.forEach(z=>{z.d=z.cells.length?zGrid(z.id,s0):99;const c=z.cells[z.cells.length>>1];z.a=z.e=c!=null?{x:nvX(c),z:nvZ(c)}:null});
+ LV.links=[];LV.objZ=null;LV.genZ=[];LV.obj=LV.hold=null;LV.gens=[];
+ lvDraw(b,LV.seed);
+ const g=new THREE.Mesh(new THREE.PlaneGeometry(TUW*2,TUV[1]-TUV[0]),new THREE.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:.42,depthWrite:false}));g.rotation.x=-Math.PI/2;g.position.set(0,.04,(TUV[0]+TUV[1])/2);S.add(tuMesh(g));
+ TUV.forEach(z=>{const l=new THREE.Mesh(new THREE.PlaneGeometry(TUW*2,.25),new THREE.MeshBasicMaterial({color:0xffd27a}));l.rotation.x=-Math.PI/2;l.position.set(0,.05,z);S.add(tuMesh(l))})}
+// ----- passos -----
+const TUS=[
+ {id:'walk',cp:50,t:{th:'Arraste à esquerda para andar e à direita para olhar. Vá aos 2 marcadores azuis.',cl:'Use o joystick para andar e arraste à direita para olhar. Vá aos 2 marcadores azuis.',pc:'WASD anda e o mouse olha. Vá aos 2 marcadores azuis.'},
+  set(){TUE.mk=[[-6,42],[6,36]].map(([x,z])=>({x,z,m:tuMesh(zrMesh(x,z,0x38bdf8))}))},
+  done(){TUE.mk.forEach(o=>{if(o.m&&Math.hypot(pos.x-o.x,pos.z-o.z)<2.2){S.remove(o.m);o.m=null;snd('coin')}});return TUE.mk.every(o=>!o.m)}},
+ {id:'jump',cp:36,hl:'bj',t:{th:'Muro baixo: toque rápido na área de olhar para pular.',cl:'Muro baixo: toque em PULO.',pc:'Muro baixo: Espaço pula.'},done:()=>pos.z<30},
+ {id:'jump2',cp:29,hl:'bj',t:{th:'Muro alto: pule e toque de novo no ar (pulo duplo).',cl:'Muro alto: PULO e de novo no ar (pulo duplo).',pc:'Muro alto: Espaço e de novo no ar (pulo duplo).'},done:()=>pos.z<25},
+ {id:'dash',cp:23,hl:'bd',t:()=>pos.z<TUV[0]?{th:'Agora dê um dash: empurre o joystick além do anel roxo.',cl:'Agora dê um dash: toque em DASH.',pc:'Agora dê um dash: Shift.'}
+   :{th:'Vão elétrico: pule e, no ar, empurre o joystick além do anel roxo (dash). As 2 cargas recarregam sozinhas.',cl:'Vão elétrico: pule e, no ar, toque em DASH. As 2 cargas recarregam sozinhas.',pc:'Vão elétrico: pule e, no ar, dê dash (Shift). As 2 cargas recarregam sozinhas.'},
+  done:()=>pos.z<TUV[0]&&TUQ.dash>0},
+ {id:'lock',cp:10,hl:'ba',t:{th:'Ponha o boneco no círculo e espere o anel encher: travou. Com AUTO, a arma atira sozinha.',cl:'Ponha o boneco no círculo e espere o anel encher: travou. Com AUTO, a arma atira sozinha.',pc:'Ponha o boneco no círculo até o anel encher (travou) e clique para atirar. T liga o AUTO.'},
+  set(){TUE.dm=tuDummy(0,-2)},done:()=>TUQ.lock>0&&TUQ.shot>0},
+ {id:'reload',cp:10,hl:'bf',t:{th:'Atire até o pente acabar. FOGO atira mesmo sem trava, com dispersão. A recarga é sozinha e leva 1,3 s.',pc:'Atire até o pente acabar (sem trava o tiro abre). A recarga é sozinha e leva 1,3 s: evite no meio da briga.'},
+  done:()=>TUQ.reload>0},
+ {id:'kill',cp:8,t:'Um soldado! Trave e derrube. Abater recupera vida; ficar parado não cura.',
+  set(){if(TUE.dm&&E.includes(TUE.dm)){shatter(TUE.dm);S.remove(TUE.dm.m);E.splice(E.indexOf(TUE.dm),1)}TUE.dm=null;hp=Math.min(hp,Math.round(MH*TUT.hp));TUE.s=tuFoe(0,-14)},done:()=>tuOut(TUE.s)},
+ {id:'gen',cp:8,t:'Nem todo objetivo é matar: destrua o gerador laranja.',set(){mkGen(5,-18);TUE.g=E[E.length-1];TUE.g.hp=TUE.g.max=TUT.gen},done:()=>tuOut(TUE.g)},
+ {id:'shield',cp:8,hl:'bd',t:'Escudo: de frente ele não trava. Dê a volta (dash para o lado) e acerte as costas.',set(){TUE.a=tuFoe(-3,-14,'arm');TUE.a.hp=TUE.a.max=C.eHP*1.4},done:()=>tuOut(TUE.a)||T-TUQ.t0>TUT.shT},
+ {id:'loot',cp:6,hl:'bp',t:{th:'Caixa! Chegue perto: o painel compara (verde melhor, vermelho pior). PEGAR equipa; a antiga vira sucata.',pc:'Caixa! Chegue perto: o painel compara (verde melhor, vermelho pior). E pega; a antiga vira sucata.'},
+  // arma claramente melhor (DPS acima da atual) para o painel mostrar mais verde que vermelho
+  set(){let it;for(let i=0;i<40;i++){it=genItem('wp',i<20?2:3,'shotgun');if(it.dps>w.dps*1.15)break}TUE.c=crate(-3,-4,it)},done:()=>TUQ.pw>0},
+ {id:'mod',cp:6,hl:'bp',t:'Módulos (mira, mobilidade e núcleo) funcionam igual: pegue este. Troque sempre que vier um melhor.',set(){TUE.c=crate(3,-8,genItem('aim',1))},done:()=>TUQ.pm>0},
+ {id:'style',cp:-4,t:()=>w.ty=='shotgun'?'Escopeta: chegue perto com dash e atire; cada acerto devolve uma carga de dash. Derrube os dois.':w.ty=='smg'?'Metralhadora: ande de lado enquanto atira. Derrube os dois.':'Cada arma pede um jeito: trave de longe e mantenha distância. Derrube os dois.',
+  set(){TUE.f=[tuFoe(-4,-30),tuFoe(4,-33)]},done:()=>TUE.f.every(tuOut)},
+ {id:'am',cp:-20,t:'Pegue as amostras ◆. Elas só ficam suas se você embarcar; morrer perde as carregadas.',
+  set(){TUE.am={x:0,z:-38,m:tuMesh(zrMesh(0,-38,ZR.t.amostras.c))}},
+  done(){const a=TUE.am;if(a.m&&Math.hypot(pos.x-a.x,pos.z-a.z)<2.2){S.remove(a.m);a.m=null;AMC+=TUT.am;snd('rare');glow()}return!a.m}},
+ {id:'ext',cp:-28,t:()=>extC?'Fique no círculo até embarcar. Fora dele a contagem para, mas não volta.':'Entre no círculo verde: isso chama a nave.',
+  set(){snd('alert');phase='extract';extC=false;extW=0;wave=0;extP=0;ext=mkRing(0,-46,0x4ade80,TUT.ext.r)},
+  // uma onda pequena quando a nave é chamada (um soldado que erra)
+  done(){if(extC&&!TUE.xw){TUE.xw=tuFoe(0,-24)}return false}}];
+function tutStep(i){const o=TUS[TUI];if(o&&o.hl)$(o.hl).classList.remove('tuhl');TUI=i;TUQ={t0:T};const s=TUS[i];if(!s)return;
+ if(SV.tut&&i>SV.tut.s){SV.tut.s=i;save()}if(i)snd('tickc',1.5);if(s.set)s.set();if(s.hl)$(s.hl).classList.add('tuhl');TUK='';tutText()}
+function tutText(){const s=TUS[TUI];if(!s)return;const t=tuT(s.t),k=TUI+t;if(k==TUK)return;TUK=k;$('tut').innerHTML=`<small>Treino ${TUI+1}/${TUS.length}</small>${t}`}
+// ações do jogador contadas no passo atual
+['jump','jump2','dash','lock','reload','shot','extract'].forEach(n=>on(n,()=>{if(M=='tut'&&st=='play')TUQ[n]=(TUQ[n]||0)+1}));
+on('pick',it=>{if(M!='tut'||st!='play')return;const k=(it.sl||'wp')=='wp'?'pw':'pm';TUQ[k]=(TUQ[k]||0)+1});
+// a cada passo: vão elétrico (pisar nele volta para a beira), conclusão do passo e texto
+function tutTick(dt){
+ if(grounded&&pos.y<1.7&&pos.z>TUV[0]&&pos.z<TUV[1]){const s=TUI<=3?TUV[1]+2:TUV[0]-2;pos.set(cl(pos.x,-TUW+1,TUW-1),1.6,s);vx=vz=vy=0;dashT=0;snd('warn');vib([20]);addTr(.2)}
+ const s=TUS[TUI];if(s&&s.done(dt))tutStep(TUI+1);tutText()}
+// morrer no Treino volta ao último passo, sem tela de derrota
+function tutDie(){hp=MH;inv=1.5;const s=TUS[TUI];pos.set(0,1.6,s?s.cp:0);vx=vz=vy=0;dashT=0;snd('lose');addTr(.3)}
+function tutOff(){TUO.forEach(m=>S.remove(m));TUO=[];TUE={};const s=TUS[TUI];if(s&&s.hl)$(s.hl).classList.remove('tuhl');TUI=0;$('tut').style.display='none'}
+MS.tut={n:'Treino',d:'Missão curta que ensina o básico.',en:0,th:1,hide:1,bare:1,ext:TUT.ext,map:tutMap,
+ setup(){phase='tut';ZRW.forEach(r=>r.m&&S.remove(r.m));ZRW=[];AMC=0;DW=null;dsh=false;drn.visible=false;sph.visible=false;ARSA=['pistol','shotgun'];equip(genItem('wp',0,'pistol'));calcBuild();hp=MH;dashC=DN;
+  $('tut').style.display='block';tutStep(0)},
+ tick:tutTick,
+ obj:()=>'Treino '+Math.min(TUI+1,TUS.length)+'/'+TUS.length,
+ marks(){const P=(x,z,c,t)=>mark(new THREE.Vector3(x,1.5,z),c,t);
+  if(TUE.mk)TUE.mk.forEach(o=>o.m&&P(o.x,o.z,'#38bdf8','MARCADOR'));if(TUE.dm&&E.includes(TUE.dm))mark(ec(TUE.dm),'#fbbf24','BONECO');
+  if(TUE.g&&E.includes(TUE.g))mark(ec(TUE.g),'#f59e0b','GERADOR');if(TUE.c&&crates.includes(TUE.c))P(TUE.c.m.position.x,TUE.c.m.position.z,'#fbbf24','CAIXA');
+  if(TUE.am&&TUE.am.m)P(TUE.am.x,TUE.am.z,ZR.t.amostras.c,'◆ AMOSTRAS')},
+ fin(win){if(!win)return tutDie();tutEnd()}};
+// fim do Treino: créditos fixos e as amostras pegas só na primeira vez; sem registro de partida nem maestria
+function tutEnd(){st='end';tutOff();scrReset();const o=SV.tut||(SV.tut={s:0,f:0}),first=!o.f;o.f=1;o.s=TUS.length;let cr=0,am=0;if(first){cr=TUT.cr;am=AMC;SV.cr+=cr;SV.am=(SV.am|0)+am}save();snd('win');trauma=0;
+ vw('full');$('st').style.borderColor='';$('st').textContent='TREINO CONCLUÍDO';$('sd').textContent='';
+ $('hub').innerHTML=`<div class="tuw"><p>Você já sabe o básico. Na Base, escolha uma missão avulsa ou comece uma <b>Operação</b>.</p>`
+  +(first?`<div class="pzi"><span>Créditos</span><b>+${cr} cr</b></div><div class="pzi"><span>Amostras guardadas</span><b>+${am} ◆</b></div>`:'<small>A recompensa do Treino vem só na primeira vez.</small>')
+  +`<small>Lembrete: morrer encerra a missão. Os créditos continuam vindo; as amostras carregadas se perdem.</small><button id="go" onclick="base()">IR PARA A BASE ›</button></div>`;
+ $('scr').style.display='flex'}
+// primeira vez que o jogo abre: convite de um toque (o toque libera som e tela cheia no celular)
+function tutWel(){vw('full');$('st').style.borderColor='';$('st').textContent='EXTRAÇÃO';$('sd').textContent='';
+ $('hub').innerHTML=`<div class="tuw"><p>Primeira vez? O <b>Treino</b> ensina o básico em 3 a 4 minutos: andar, pular, dash, mira e trava, loot e extração.</p><button id="go" onclick="tutGo()">COMEÇAR TREINO ›</button><button class="card nb" onclick="tutSkip()">Pular, já sei jogar</button></div>`;
+ $('scr').style.display='flex'}
+function tutGo(re){if(re)SV.hints={};if(!SV.tut)SV.tut={s:0,f:0};save();startM('tut',[],'cx')}
+function tutSkip(){if(!SV.tut)SV.tut={s:0,f:0};save();base()}
+// ----- dicas de tela (partes 5 e 6): aparecem uma vez, na primeira vez que a tela abre depois do Treino; toque fecha -----
+const HINT={op:'<b>Operação</b> = 3 missões seguidas, com loot cada vez melhor; a 3ª é o chefe. As outras cartas são missões avulsas.',
+ arm:'Escolha 1 <b>arma de partida</b>; o jogo sorteia mais 2. Todo loot de arma da operação sai desses 3 tipos.',
+ nave:'<b>Nave</b>: a vida volta em parte; a bancada melhora itens com sucata; a loja vende itens; o contrato de risco é opcional.',
+ lab:'<b>Laboratório</b>: Habilidades e Drone custam créditos; Armas, Marcas, Efeitos e Lendárias custam amostras ◆. Um toque compra. Pistola e Escopeta já vêm liberadas.',
+ ars:'<b>Arsenal</b>: a carga que vai com você para a missão (módulo, consumível e drone).'};
+function hint(k){const e=$('hint');if(TUH==k){e.style.display='block';return}if(!SV.tut||!SV.hints||SV.hints[k]||!HINT[k])return;SV.hints[k]=1;save();TUH=k;
+ e.innerHTML=HINT[k]+'<small>Toque para fechar</small>';e.style.display='block'}
+function hintOff(x){const e=$('hint');if(e)e.style.display='none';if(x)TUH=''}
 
 // ---- fx/juice.js ----
 // Juice: tremor por trauma, pausa de impacto, sequência, marcas, cápsulas, setas de dano, moedas
@@ -2036,7 +2161,7 @@ function hudX(){const n=SV.cs[SV.ci]|0;
   for(let i=0;i<9;i++)mk+=(i==pz?'p':'-')+(ob.includes(i)?'o':'-')+(R[i]||'')+',';mk+=phase=='extract'?'x':''}
  hkSet('m',mk,()=>{const m=$('zmap');if(!on){m.style.display='none';m.innerHTML='';return}m.style.display='grid';const c=mk.split(','),ex=phase=='extract';
   m.innerHTML=c.slice(0,9).map((v,i)=>{const r=v.slice(2),T=ZR.t[r];return`<div class="${v[0]=='p'?'me':''}${v[1]=='o'?(ex?' ex':' ob'):''}">${v[1]=='o'?'<s></s>':''}${T?`<em style="color:${T.c}">${T.ic}</em>`:''}${v[0]=='p'?'<u></u>':''}</div>`}).join('')});
- const xp=phase=='extract'&&extC?Math.min(100,Math.floor(extP/EXT.t*100)):-1,xk=xp<0?'':xp+(inExt()?'':'o');
+ const xp=phase=='extract'&&extC?Math.min(100,Math.floor(extP/XT().t*100)):-1,xk=xp<0?'':xp+(inExt()?'':'o');
  hkSet('x',xk,()=>{const b=$('exb');if(!xk){b.style.display='none';return}b.style.display='block';b.classList.toggle('out',!inExt());b.firstChild.style.width=xp+'%';b.lastChild.textContent='EXTRAINDO '+xp+'%'})}
 // Painel de comparação enxuto: ícone + valor novo + diferença para o item do mesmo encaixe (verde melhor, vermelho pior; na trava, menor é melhor).
 // Atributos iguais não aparecem (o DPS sempre aparece, grande). Efeitos só com o nome: + entra, riscado sai; na loja da nave, com a descrição.
@@ -2068,7 +2193,7 @@ const IC={op:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><p
 const icon=k=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
 const RL={op:['OPERAÇÕES','Escolha uma missão'],ars:['ARSENAL','O que você leva na próxima missão'],lab:['LAB','Tudo que é permanente'],aj:['AJUSTES','Controles, câmera e dados do save']};
 const crT=n=>n.toLocaleString('pt-BR')+' cr';
-function vw(m){$('scr').classList.toggle('bs',m!='full');$('scr').classList.remove('bf','fim','nvs');$('hub').style.display=m=='menu'?'none':'block';$('cards').style.display=m=='menu'?'flex':'none';$('fwrow').style.display=m=='menu'?'block':'none';if(m!='full')rail()}
+function vw(m){hintOff();$('scr').classList.toggle('bs',m!='full');$('scr').classList.remove('bf','fim','nvs');$('hub').style.display=m=='menu'?'none':'block';$('cards').style.display=m=='menu'?'flex':'none';$('fwrow').style.display=m=='menu'?'block':'none';if(m!='full')rail()}
 function rail(){const t=$('cards').style.display=='flex'?'op':BT;$('rail').innerHTML='<div class="rlg">EXTRAÇÃO</div>'+Object.keys(RL).map(k=>`<button class="rb${k==t?' on':''}" onclick="${k=='op'?'base()':`hub('${k}')`}">${icon(k)}${RL[k][0]}</button>`).join('');
  $('bhd').innerHTML=`<span class="chip cr" id="bcr">${crT(SV.cr)}</span><span class="chip am">◆ ${SV.am|0} amostras</span>`+(t=='op'?`<span class="chip th"><button onclick="thm(-1)" aria-label="Ameaça menor">‹</button>Ameaça ${SV.th} · ${THR[SV.th].n}<button onclick="thm(1)" aria-label="Ameaça maior">›</button></span>`:'')}
 function base(k){if(endFin)endFin();$('st').style.borderColor='';$('st').textContent='OPERAÇÕES';$('sd').textContent=RL.op[1];cards(k)}
@@ -2077,9 +2202,9 @@ function base(k){if(endFin)endFin();$('st').style.borderColor='';$('st').textCon
 let CDS=[],BFC=null;
 const msFor=c=>c.ms0.length>=(THR[SV.th]||THR[1]).mods?c.ms0:c.ms0.concat(c.ex);
 const nX=v=>String(Math.round(v*100)/100).replace('.',',');
-function cards(keep){const c=$('cards');c.innerHTML='';opCard(c);if(!keep||CDS.length!=3)CDS=Object.keys(MS).filter(k=>k!='hold').sort(()=>Math.random()-.5).slice(0,3).map(id=>{const k=Math.random(),n0=k<.3?0:k<.8?1:2,mk=Object.keys(MODS).sort(()=>Math.random()-.5),bk=Object.keys(BIO);return{id,ms0:mk.slice(0,n0),ex:mk[n0],bi:bk[Math.random()*bk.length|0]}});
+function cards(keep){const c=$('cards');c.innerHTML='';opCard(c);if(!keep||CDS.length!=3)CDS=Object.keys(MS).filter(k=>k!='hold'&&!MS[k].hide).sort(()=>Math.random()-.5).slice(0,3).map(id=>{const k=Math.random(),n0=k<.3?0:k<.8?1:2,mk=Object.keys(MODS).sort(()=>Math.random()-.5),bk=Object.keys(BIO);return{id,ms0:mk.slice(0,n0),ex:mk[n0],bi:bk[Math.random()*bk.length|0]}});
  CDS.forEach(cd=>{const id=cd.id,bi=cd.bi,ms=msFor(cd),b=document.createElement('button');b.className='card';
- b.innerHTML=`<small class="cb">${BIO[bi].n}</small><b>${MS[id].n}</b><span>${MS[id].d}</span>`+(ms.length?ms.map(m=>`<i>${MODS[m][0]}: ${MODS[m][1]}</i>`).join(''):'<i class="no">Sem modificadores</i>')+`<small class="cf"><span>Pontos ×${String(1+ms.length*.5).replace('.',',')}</span><span class="rk">Risco ${[1,2,3].map(i=>`<s class="${i<=ms.length+1?'on':''}"></s>`).join('')}</span></small>`;b.onclick=()=>brief(cd);c.appendChild(b)});vw('menu');fwr()}
+ b.innerHTML=`<small class="cb">${BIO[bi].n}</small><b>${MS[id].n}</b><span>${MS[id].d}</span>`+(ms.length?ms.map(m=>`<i>${MODS[m][0]}: ${MODS[m][1]}</i>`).join(''):'<i class="no">Sem modificadores</i>')+`<small class="cf"><span>Pontos ×${String(1+ms.length*.5).replace('.',',')}</span><span class="rk">Risco ${[1,2,3].map(i=>`<s class="${i<=ms.length+1?'on':''}"></s>`).join('')}</span></small>`;b.onclick=()=>brief(cd);c.appendChild(b)});vw('menu');fwr();hint('op')}
 // Briefing (etapa 7): tela cheia, sem trilho. Missão e modificadores à esquerda; ameaça (SV.th, vale para tudo) e carga à direita.
 // Da Base até começar: carta → INICIAR MISSÃO (2 toques). A Operação nova usa o mesmo layout (armas)
 const bfHead=(t,v,f)=>`<header class="bfh">${f?`<button class="bfb" onclick="${f}">‹ Voltar</button>`:''}<h2>${t}</h2>${v?`<span class="chip cr bfp">${v}</span>`:''}</header>`;
@@ -2132,7 +2257,7 @@ function cfgHtml(t){if(!t)return Object.keys(AJL).map(cfgHtml).join('');const c=
  if(t=='tela')return`<div class="cp" data-t="tela">`+h('Gráficos')+seg('Qualidade gráfica: '+GQ.n[gqI()],GQ.n.map((n,i)=>[n,gqI()==i,`cfg('q',${i+1})`]))+h('Acessibilidade')+tg('Tremor de tela','sh')+tg('Câmera: zoom, recuo e câmera lenta','cm')+tg('Efeitos de clarão','fl')+h('HUD')+tg('Mapa de zonas','zm')+`<button class="card nb" onclick="fs()">Tela cheia</button></div>`;
  if(t=='teste')return`<div class="cp" data-t="teste">`+mtHtml()+'</div>';
  if(t=='dados')return`<div class="cp" data-t="dados">`+h('Código dos ajustes')+'<div><span>Só os ajustes (sem créditos nem progresso), para levar a outro aparelho ou ao link.</span><textarea rows=2></textarea><button class="card nb" onclick="cfgExp(this)">Gerar código</button><button class="card nb" onclick="cfgImp(this)">Aplicar código colado</button><button class="card nb" onclick="cfgDef()">Voltar ao padrão</button></div></div>';
- if(t=='como')return`<div class="cp ht" data-t="como">${HOWTO}</div>`+glossHtml();return''}
+ if(t=='como')return`<div class="cp ht" data-t="como">${st=='play'||st=='pause'?'':'<button class="card nb" onclick="tutGo(1)">Refazer treino</button>'}${HOWTO}</div>`+glossHtml();return''}
 // Glossário dos ícones do painel de comparação (Ajustes > Como jogar)
 function glossHtml(){const g=(ic,n)=>`<span>${ic}${n}</span>`,mk=(t,a)=>`<h4>${t}</h4><div class="gl">${a.join('')}</div>`;
  return`<div class="cp" data-t="gloss">`+mk('Tipos de arma',Object.keys(TY).map(k=>g(tyIc(k,'',18),TY[k].n)))+mk('Atributos da arma',CMS.map(s=>g(stIc(s[0],16),s[1])))
@@ -2172,7 +2297,7 @@ function hub(tab){if(endFin)endFin();if(tab)BT=tab;$('st').style.borderColor='';
  if(BT=='lab')t=labHtml(LBT);
  else if(BT=='ars')t=arsTab();
  else t=cfgUI(1);
- h.innerHTML=t}
+ h.innerHTML=t;hint(BT)}
 const HOWTO='Esquerda: mover · Direita: olhar · Mantenha inimigos no círculo para <b>travar</b>; tiros travados não erram. Matar recupera vida.<br>Inimigos: laranja investe, azul com escudo (flanqueie), roxo bombardeia (saia do círculo laranja, pule ou dê dash), turquesa voa (olhe para cima).<br>Todos os inimigos agem em equipe: cobertura, flanco, fogo de cobertura e tenaz (os voadores atacam pelo lado oposto).<br>Celular (layout Polegares): toque rápido na área de olhar = pulo (de novo no ar = pulo duplo); empurre o joystick além do anel roxo = dash.<br><small>PC: clique p/ capturar o mouse · WASD · Espaço pula · Shift dash · clique esq. atira · E pega · R recarrega · T liga/desliga AUTO</small><br><small>Ícones: tipos de arma de game-icons.net (Lorc, Delapouite, John Colburn; CC BY 3.0) e atributos de Tabler Icons (MIT).</small>';
 // Registro de partidas (playtest): resumo das últimas e botão para copiar tudo para o campo de save
 function logCol(){const L=SV.log||[],v=L.filter(x=>x.win).length;return`<div class="col"><b>Registro de partidas</b><span>${L.length} gravadas · ${v} vitórias</span>`+L.slice(-5).reverse().map(x=>`<span>${x.win?'✓':'✗'} ${MS[x.m]?MS[x.m].n:x.m} · ${fmt(x.T)} · ${x.k} abates${x.src?' · morte: '+x.src:''}</span>`).join('')+`<button class="card nb" onclick="cpy($('sv'),JSON.stringify(SV.log||[]),this)">Copiar registro</button></div>`}
@@ -2200,7 +2325,7 @@ function nave(){const o=SV.op;if(!o||!o.eq)return cards();if(endFin)endFin();opL
   +bt(SCR>=OP.cure[1]&&o.hf<1,'opCure()',`${stIc('hl',14)} Curar ${OP.cure[0]*100}% da vida`+pr(OP.cure[1]))+'<span class="pzs">Comprar troca pelo item do encaixe; o antigo vira sucata.</span></div>';
  t+='<div class="pzk nv nvk"><h4>Contrato de risco</h4><span class="pzs">Opcional; vale só na próxima missão.</span>'+o.ct.map(k=>`<button class="card nb nct${o.cs==k?' on':''}" aria-pressed="${o.cs==k}" onclick="opCt('${k}')">${o.cs==k?'✓ ':''}<b>${MODS[k][0]}</b> ${MODS[k][1]}<br><span class="g">Recompensa: ${OP.ct[k]}</span></button>`).join('')+'</div></div>';
  t+=`<div class="nvf"><button class="pzbt" onclick="opExit()">Salvar e sair</button><button id="go" class="pzbt go" onclick="opGo()">MISSÃO ${o.n+1}/3 ▶</button></div>`;
- h.innerHTML=t;h.querySelectorAll('.nvk').forEach((e,i)=>e.scrollTop=sc[i]|0)}
+ h.innerHTML=t;h.querySelectorAll('.nvk').forEach((e,i)=>e.scrollTop=sc[i]|0);hint('nave')}
 // Laboratório em abas (LBT = aba aberta): Habilidades e Drone em créditos; Armas (e o kit), Marcas, Efeitos e Lendárias em amostras.
 // Um toque no nó compra (buy, buyDr, labBuy) e a tela volta na mesma aba. Sem saldo o nó fica apagado e mostra o que falta.
 let LBT='sk';
@@ -2276,7 +2401,7 @@ function armas(ctx){ARC_=ctx;BFC=null;if(endFin)endFin();if(!wpUn(SV.arsP))SV.ar
   +`<footer class="bff">${ro?'<span class="bfsd">Toque para começar</span>':''}<button id="go" onclick="${ro?'armasGo()':'armasOk()'}">${ro?'COMEÇAR ›':'SORTEAR E INICIAR ›'}</button></footer>`;
  const g=document.createElement('div');g.className='ars'+(ro?' rv':'');
  if(ro)ctx.a.forEach((k,i)=>{const c=arsCard(k,i==0,1);if(i)c.style.animationDelay=(i*.18)+'s',c.classList.add('flip');g.appendChild(c)});else Object.keys(TY).forEach(k=>g.appendChild(arsCard(k,k==SV.arsP)));
- h.querySelector('.bfaw').appendChild(g)}
+ h.querySelector('.bfaw').appendChild(g);if(!ro)hint('arm')}
 function armasBack(){ARC_=null;base(1)}
 // sorteio + revelação curta (cartões girando); tocar em qualquer lugar começa na hora
 function armasOk(){const ctx=ARC_;if(!ctx||ctx.a)return;const a=arsRoll(SV.arsP);ctx.a=a;snd('pick');armas(ctx);const h=$('hub');
@@ -2375,7 +2500,8 @@ function updateVisuals(dt){
 }
 // início
 applyCf();
-base();
+// primeira vez (sem Treino no save): convite para o Treino; senão, a Base
+if(SV.tut)base();else tutWel();
 requestAnimationFrame(frame);
 </script>
 </body></html>
