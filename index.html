@@ -389,7 +389,12 @@ body:not(.jg) #hud{visibility:hidden}
 // ===== TABELAS DE AJUSTE =====
 // Tudo que é número de balanceamento ou conteúdo (armas, inimigos, biomas, chefes, modificadores, base) fica aqui.
 const C={speed:8,gnd:70,air:30,grav:32,jump:11,jump2:10,dashSpd:26,dashT:.16,dashN:2,dashRec:1.6,hp:120,regen:0,heal:14,healElite:50,sens:.0022,cone:.34,eHP:60,eliteHP:600,eDmg:7,eliteDmg:14,nEnemies:14,nCrates:9,reinf:7};
-const J={jBuf:.12,coyote:.1,dBuf:.3,trDecay:1.1,trMax:.035,trRoll:.03,trHurt:.22,trBig:.45,trElite:.35,trBoss:.6,hsMax:.12,hsElite:.06,hsBoss:.11,hsPhase:.07,slowmo:.3,slowT:.6,
+// mnt = escalada de beirada (12 out 2026, estilo Doom): no ar, empurrando contra a beirada. min = altura mínima acima do chão de onde pulou (1,3: o muro baixo de 1,2 m se pula; cobertura e degrau já escalam; pedido do Pedro, 12 out 2026),
+// reach = alcance das mãos acima dos pés, t = duração da subida, keep = fração da velocidade de corrida mantida ao terminar, k = tipos de peça que dá para escalar (a borda de fora 'edge' nunca; peça com nm=1 também não, ex.: muro alto do Treino), propMax = altura máx. de objeto ('prop') escalável (plat e step só têm o alcance das mãos; decisão provisória do dono)
+// J.mo (momentum, 12 out 2026): dot = mínimo do produto escalar (velocidade x entrada) para manter a velocidade no ar; drag = arrasto do módulo acima da corrida (m/s²); max = teto da velocidade horizontal no ar (m/s);
+// turn = giro máximo da velocidade rumo à entrada no ar (rad/s); djT = janela do dash-pulo depois do dash (s); djK = velocidade no fim do dash em múltiplos de C.speed (1,5 como antes); djJ = velocidade do dash-pulo (e do pulo duplo no dash) em múltiplos de C.speed;
+// 12 out 2026, pedido do Pedro ("controles anteriores eram mais responsivos"): tudo a meio caminho entre o movimento antigo e o primeiro ajuste — drag 4→7 (velocidade extra dura ~0,6 s, antes ~0,1 s e no 1º ajuste ~1 s), max 16→14, turn 5→8, djJ 1,5→1,35 (~10,8 m/s na saída; 0,2 s depois ~9,4, entre os 8 de antes e os 11,2 do 1º ajuste), steer 0,44→0,22 (~12°; antes 0) steer = giro máximo do dash vs. direção inicial (rad); steerV = rapidez desse giro (rad/s).
+const J={mo:{dot:.5,drag:7,max:14,turn:8,djT:.15,djK:1.5,djJ:1.35,steer:.22,steerV:6},mnt:{min:1.3,reach:1.5,t:.2,keep:.8,r:.65,propMax:3.5,dot:.5,k:['plat','step','prop','cov','wall']},jBuf:.12,coyote:.1,dBuf:.3,trDecay:1.1,trMax:.035,trRoll:.03,trHurt:.22,trBig:.45,trElite:.35,trBoss:.6,hsMax:.12,hsElite:.06,hsBoss:.11,hsPhase:.07,slowmo:.3,slowT:.6,
  recoil:{pistol:.012,shotgun:.035,smg:.006},streakT:2.5,calls:{3:'Sequência!',5:'Imparável!',8:'Massacre!',12:'Lendário!'},dmGap:.34,dmPeak:.6,dmLow:.25,dirT:.9,tel:.28,decals:40,holes:60,shells:30,shellT:2.5,
  // tiro e arma (fx/juice.js, weapons/viewmodel.js): fl = tamanho do clarão; kz/kr = coice do modelo (recuo em m, cano sobe em rad); sl = curso do ferrolho/telha;
  // sm = fumaça a cada N tiros (0 = nunca); ch = lascas no impacto; sp = fagulhas (por alvo); sk = faísca no impacto; sc = cor da cápsula
@@ -461,7 +466,7 @@ const BIO={cx:{n:'Complexo',gc:0x1c2530,bg:0x10151c,wc:0x34414f,nw:26,sz:[1.5,4.
 // ===== NÍVEIS (world/level.js) =====
 // O mapa (108 × 108 m) vira 3 × 3 zonas de 36 m. Um grafo liga as zonas (árvore a partir do início + passagens extras para flanco).
 // Borda entre zonas ligadas tem porta; borda sem ligação é muro (às vezes um trecho baixo: só o jogador pula, os inimigos contornam).
-// Alturas: baixo 1,2 (o jogador sobe sozinho ao correr; não bloqueia tiro), cobertura 1,8 (bloqueia tiro), degrau 1,5, plataforma 3 (degrau + pulo).
+// Alturas: baixo 1,2 (o jogador precisa pular; não bloqueia tiro), cobertura 1,8 (bloqueia tiro), degrau 1,5, plataforma 3 (degrau + pulo).
 const LVC={zone:36,door:[4,7],wallT:.8,lowH:1.2,covH:1.8,stepH:1.5,platH:3,openBorder:.15,lowBorder:.35,gap:2.2,clr:1.2,spawnClear:9,tries:10,
  pref:{hunt:['torre','arena'],ret:['torre','becos'],hold:['patio'],boss:['arena','campo'],sab:['becos','ruinas','torre'],purge:['arena','ruinas']}};
 // Arquétipos de sala (o desenho de cada um fica em ARQF, world/level.js)
@@ -920,7 +925,7 @@ auto=!pc;
 if(pc)document.body.classList.add('pc');
 let TS=.006,LH=false,TH=1,TD=1,MOD='',spdT=0,ovT=0,SV,SPM=1,DR=1.6,DN=2,LK=1,CN=1,SL=0,DL=1,DF=1,HB=0,RG=0,used=0,inv=0,DW=null,dsh=false,dcd=0,byDrone=false;
 let M='hunt',md=[],MH=C.hp,HM=1,EM=1,EN=1,LM=1,DET=34,gl=0,carry=false,item=null,hz=null,hzm=null,hprog=0,hw=0,inZ=false;
-let vx=0,vz=0,vy=0,jumps=1,dashC=2,dashT=0,dashR=0,dashCd=0,ddx=0,ddz=-1,wx=0,wz=0,grounded=true;
+let vx=0,vz=0,vy=0,jumps=1,dashC=2,dashT=0,dsT=9,dashR=0,dashCd=0,ddx=0,ddz=-1,wx=0,wz=0,grounded=true;
 let bombs=[];
 let bt=4,bnd=0,GX=0,GZ=0,GN=0;
 let stick=null,look=null;
@@ -970,10 +975,23 @@ function cons(k){if(SV.ci!=k&&SV.cs[k]>0)SV.ci=k;else if(SV.cr>=CSL[k][2]&&SV.cs
 // Jogador: entrada de movimento, pulo/dash com fila, dano recebido e consumível
 const fwd=()=>new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
 const ec=e=>new THREE.Vector3(e.m.position.x,e.m.position.y+(e.cy!=null?e.cy:e.elite?1.5:.95),e.m.position.z);
-function doJump(){if(st!='play')return;if(grounded||co>0)jumpNow();else if(jumps>0){vy=C.jump2*Math.sqrt(JM);jumps--;snd('jump2');emit('jump2')}else jb=J.jBuf}
-function doDash(){if(st!='play')return;if(dashC<1||dashCd>0){db=J.dBuf;return}dashNow()}
-function dashNow(){dashC--;dashCd=.25;snd('dash');emit('dash');dashT=C.dashT;if(Math.hypot(wx,wz)>.1){const l=Math.hypot(wx,wz);ddx=wx/l;ddz=wz/l}else{ddx=-Math.sin(yaw);ddz=-Math.cos(yaw)}}
-function jumpNow(){vy=C.jump*Math.sqrt(JM);grounded=false;co=0;snd('jump');emit('jump')}
+const dk=()=>C.speed*SPM*J.mo.djK*(carry?.7:1),dkj=()=>C.speed*SPM*J.mo.djJ*(carry?.7:1); // fim do dash (djK) e dash-pulo (djJ), em múltiplos de C.speed, com SPM e maleta
+function doJump(){if(st!='play')return;if(mnT>0){jb=J.jBuf;return}if(grounded||co>0)jumpGo();else if(jumps>0){if(dashT>0){dashT=0;dsT=9;vx=ddx*dkj();vz=ddz*dkj()}vy=C.jump2*Math.sqrt(JM);jumps--;snd('jump2');emit('jump2')}else jb=J.jBuf}
+function doDash(){if(st!='play')return;if(mnT>0){db=J.dBuf;return}if(dashC<1||dashCd>0){db=J.dBuf;return}dashNow()}
+function dashNow(){dashC--;dashCd=.25;snd('dash');emit('dash');dashT=C.dashT;if(Math.hypot(wx,wz)>.1){const l=Math.hypot(wx,wz);ddx=wx/l;ddz=wz/l}else{ddx=-Math.sin(yaw);ddz=-Math.cos(yaw)}dA=Math.atan2(ddx,ddz)}
+function jumpNow(pm){vy=C.jump*Math.sqrt(JM);grounded=false;co=0;snd('jump',pm);emit('jump')}
+// Dash-pulo (J.mo): pulo durante o dash ou até J.mo.djT s depois dele (no chão/coyote) encerra o dash e sai com C.speed×J.mo.djK na direção do dash (70% com carry)
+function jumpGo(){if(dashT>0||dsT<=J.mo.djT){const k=dkj();dashT=0;dsT=9;jumpNow(1.25);vx=ddx*k;vz=ddz*k;emit('dashjump')}else jumpNow()}
+// Escalada de beirada (J.mnt): no ar, empurrando contra a borda de uma plataforma/degrau/objeto alto o bastante e ao alcance das mãos, sobe em J.mnt.t s.
+let dA=0,mnT=0,mnA=null,mnB=null,mnDx=0,mnDz=0,mnG=0;
+function mntTry(l){const M=J.mnt;if(grounded||dashT>0||mnT>0||l<.3)return false;const pf=pos.y-1.6,ix=wx/l,iz=wz/l;
+ for(const q of walls){if(!M.k.includes(q.k)||q.nm||q.h-pf<.1||q.h-pf>M.reach||q.h-mnG<M.min||(q.k=='prop'&&q.h>M.propMax))continue;
+  const cx=cl(pos.x,q.x-q.hw,q.x+q.hw),cz=cl(pos.z,q.z-q.hd,q.z+q.hd),dx=cx-pos.x,dz=cz-pos.z,d=Math.hypot(dx,dz);if(d>M.r)continue;
+  if(d>1e-3&&(dx*ix+dz*iz)/d<M.dot)continue;
+  const tx=cl(cx+ix*.45,q.x-q.hw+.05,q.x+q.hw-.05),tz=cl(cz+iz*.45,q.z-q.hd+.05,q.z+q.hd-.05);
+  if(walls.some(o=>o!==q&&o.h>q.h+.1&&Math.abs(tx-o.x)<o.hw+.4&&Math.abs(tz-o.z)<o.hd+.4))continue;
+  mnT=M.t;mnA={x:pos.x,y:pos.y,z:pos.z};mnB={x:tx,y:q.h+1.6,z:tz};mnDx=ix;mnDz=iz;vx=vz=vy=0;jb=0;snd('jump',.8);emit('mantle');return true}
+ return false}
 function land(v){snd('land',1,cl((v-9)/14,.3,1.2));if(v>15){vib([14]);addTr(cl((v-15)/25,0,.3))}}
 // Dano no jogador. O feedback (clarão, direção, tremor, som) fica em fx/juice.js via eventos.
 function hit(n,sx,sz,src){n*=TD*AR;if(inv>0)return;if(sx!=null)emit('threat',{x:sx,z:sz});if(DW=='sh'&&dsh){dsh=false;dcd=SHR[SV.dr-1];emit('block');return}
@@ -986,13 +1004,24 @@ function updatePlayer(dt){
  let mx=0,my=0;if(stick){const d=Math.hypot(stick.dx,stick.dy),m=Math.min(1,d/60);if(d>6){mx=stick.dx/d*m;my=stick.dy/d*m}}
  mx+=(keys.KeyD?1:0)-(keys.KeyA?1:0);my+=(keys.KeyS?1:0)-(keys.KeyW?1:0);
  wx=-Math.sin(yaw)*-my+Math.cos(yaw)*mx;wz=-Math.cos(yaw)*-my-Math.sin(yaw)*mx;let l=Math.hypot(wx,wz);if(l>1){wx/=l;wz/=l;l=1}
- dashCd-=dt;if(carry&&dashC>1)dashC=1;if(dashC<(carry?1:DN)&&(dashR+=dt)>=DR*(carry?2:1)){dashC++;dashR=0;snd('dashup')}
- if(dashT>0){dashT-=dt;const ds=C.dashSpd*(carry?.7:1);vx=ddx*ds;vz=ddz*ds;vy=0;if(dashT<=0){vx=ddx*C.speed*1.5;vz=ddz*C.speed*1.5}}
- else{const SP=C.speed*SPM*(spdT>0?1.25:1)*(carry?.85:1),dx=wx*SP-vx,dz=wz*SP-vz,d=Math.hypot(dx,dz),s=Math.min(d,(grounded?C.gnd:l>.05?C.air:4)*dt);if(d>1e-6){vx+=dx/d*s;vz+=dz/d*s}vy-=C.grav*dt}
- const pf=pos.y-1.6;pos.x+=vx*dt;pos.z+=vz*dt;pos.y+=vy*dt;push(pos,.5,pf);for(const q of walls){if(q.h<=1.6&&grounded&&pf<.1&&Math.hypot(vx,vz)>2){const cx=cl(pos.x,q.x-q.hw,q.x+q.hw),cz=cl(pos.z,q.z-q.hd,q.z+q.hd);if(Math.hypot(pos.x-cx,pos.z-cz)<.7&&vx*(cx-pos.x)+vz*(cz-pos.z)>0){vy=10.5;grounded=false;break}}}
+ dashCd-=dt;dsT+=dt;if(carry&&dashC>1)dashC=1;if(dashC<(carry?1:DN)&&(dashR+=dt)>=DR*(carry?2:1)){dashC++;dashR=0;snd('dashup')}
+ if(mnT>0){mnT-=dt;const k=Math.min(1,1-mnT/J.mnt.t),ky=Math.min(1,k*1.6),kx=k*k;pos.y=mnA.y+(mnB.y-mnA.y)*ky;pos.x=mnA.x+(mnB.x-mnA.x)*kx;pos.z=mnA.z+(mnB.z-mnA.z)*kx;vx=vz=vy=0;grounded=false;co=0;
+  if(mnT<=0){mnT=0;pos.set(mnB.x,mnB.y,mnB.z);const sp=C.speed*SPM*J.mnt.keep;vx=mnDx*sp;vz=mnDz*sp;grounded=true;co=J.coyote;mnG=mnB.y-1.6;jumps=carry?0:1}
+  cam.fov+=(70-cam.fov)*Math.min(1,dt*10);cam.updateProjectionMatrix();if(T-lastHit>4)hp=Math.min(MH,hp+RG*dt);return}
+ if(mntTry(l))return;
+ if(dashT>0){dashT-=dt;
+  if(l>.05){const M=J.mo,a=Math.atan2(ddx,ddz);let da=Math.atan2(wx,wz)-dA;da-=Math.round(da/6.2832)*6.2832;da=cl(da,-M.steer,M.steer);let d=dA+da-a;d-=Math.round(d/6.2832)*6.2832;d=cl(d,-M.steerV*dt,M.steerV*dt);ddx=Math.sin(a+d);ddz=Math.cos(a+d)} // controle leve: gira a direção do dash rumo à entrada, até J.mo.steer do ângulo inicial
+  const ds=C.dashSpd*(carry?.7:1);vx=ddx*ds;vz=ddz*ds;vy=0;if(dashT<=0){vx=ddx*dk();vz=ddz*dk();dsT=0}}
+ else{const SP=C.speed*SPM*(spdT>0?1.25:1)*(carry?.85:1),M=J.mo,sh=Math.hypot(vx,vz);
+  if(!grounded&&l>.05&&sh>SP&&(vx*wx+vz*wz)/(sh*l)>=M.dot){ // no ar acima da corrida e entrada do mesmo lado: gira a velocidade rumo à entrada, mantém o módulo e só perde arrasto
+   const a=Math.atan2(vx,vz);let da=Math.atan2(wx,wz)-a;da-=Math.round(da/6.2832)*6.2832;da=cl(da,-M.turn*dt,M.turn*dt);const n=Math.max(SP,sh-M.drag*dt);vx=Math.sin(a+da)*n;vz=Math.cos(a+da)*n}
+  else{const dx=wx*SP-vx,dz=wz*SP-vz,d=Math.hypot(dx,dz),s=Math.min(d,(grounded?C.gnd:l>.05?C.air:4)*dt);if(d>1e-6){vx+=dx/d*s;vz+=dz/d*s}}
+  if(!grounded){const h=Math.hypot(vx,vz);if(h>M.max){vx*=M.max/h;vz*=M.max/h}} // teto no ar
+  vy-=C.grav*dt}
+ const pf=pos.y-1.6;const ns=Math.max(1,Math.ceil(Math.hypot(vx,vz)*dt/.3));for(let i=0;i<ns;i++){pos.x+=vx*dt/ns;pos.z+=vz*dt/ns;push(pos,.5,pf)}pos.y+=vy*dt; // subpassos de até ~0,3 m: não atravessa parede fina em quadro lento
  let gh=0;for(const q of walls)if(pf>=q.h-.3&&Math.abs(pos.x-q.x)<q.hw&&Math.abs(pos.z-q.z)<q.hd)gh=Math.max(gh,q.h);
- if(vy<=0&&pos.y-1.6<=gh){if(!grounded&&vy<-9)land(-vy);pos.y=gh+1.6;vy=0;grounded=true;jumps=carry?0:1}else grounded=false;
- if(grounded)co=J.coyote;else co-=dt;if(jb>0){jb-=dt;if(grounded){jb=0;jumpNow()}}if(db>0){db-=dt;if(dashC>=1&&dashCd<=0){db=0;dashNow()}}
+ if(vy<=0&&pos.y-1.6<=gh){if(!grounded&&vy<-9)land(-vy);pos.y=gh+1.6;vy=0;grounded=true;mnG=gh;jumps=carry?0:1}else grounded=false;
+ if(grounded)co=J.coyote;else co-=dt;if(jb>0){jb-=dt;if(grounded){jb=0;jumpGo()}}if(db>0){db-=dt;if(dashC>=1&&dashCd<=0){db=0;dashNow()}}
  cam.fov+=((dashT>0&&camOK()?86:70)-cam.fov)*Math.min(1,dt*10);cam.updateProjectionMatrix();
  if(T-lastHit>4)hp=Math.min(MH,hp+RG*dt);
 }
@@ -1778,7 +1807,7 @@ function objDrop(x,z){crate(x,z,lootItem({x,z,up:1,min:2}))}
 // Fluxo: preparar partida, começar, pausar, sair e tela final
 function init(id,ms,bi,op){QP.forEach(m=>m.visible=false);HP.forEach(m=>m.visible=false);SHL.forEach(o=>{o.t=0;o.m.visible=false});IMQ.length=0;trauma=hs=slow=rk=0;streak=stT=stTT=0;co=jb=db=0;gy=gyv=0;dirs=[];ripples=[];dmCd=0;extTk=0;tutOff();if(MS[id].map)MS[id].map(BIO[bi]||BIO.cx);else buildMap(BIO[bi]||BIO.cx,id);bioInit(BIO[bi]||BIO.cx,LV.seed);bombs.forEach(b=>{S.remove(b.m);if(b.g)S.remove(b.g)});bombs=[];E.forEach(e=>S.remove(e.m));crates.forEach(c=>S.remove(c.m));tr.forEach(t=>S.remove(t.l));crates.forEach(c=>c.sh&&S.remove(c.sh));TRP.forEach(o=>{o.t=0;o.l.visible=false});SHP.forEach(o=>{o.t=0;o.m.visible=false});FL.visible=false;[ext,item,hzm].forEach(o=>o&&S.remove(o));E=[];SQ=[];shotT=-9;espReset();crates=[];tr=[];ext=item=hzm=hz=tgt=null;
  M=id;md=ms;const g=k=>md.includes(k);HM=g('glass')?2:1;EM=g('tough')?1.5:1;EN=g('horde')?1.6:1;LM=g('rich')?2:1;DET=g('fog')?20:34;const bo=BIO[bi]||BIO.cx;FOGB[0]=g('fog')?6:bo.fn;FOGB[1]=g('fog')?34:bo.ff;gqFog();EQ.aim=EQ.mob=EQ.core=null;fxS={};shots=0;lastSrc='';ARSA=ARSF?ARSF.slice():op?opArs(op).ars.slice():(ARSV||arsCur());ARSV=null;const a0=ARSF?SV.arsP:op?op.ars0:ARSA[0];RUN={bi,picks:[],scr:[],fuse:[],mx:{}};LS=0;OPK=0;SCR=0;BAD=0;SLH=[];w=null;calcBuild();CT=op&&op.cs||'';SM=CT=='glass'?2:1;TH=MS[id].th||(op?op.th:SV.th);TV=THR[TH]||THR[1];TD=TV.dmg;EM*=TV.hp;EN*=TV.reinf;TK.gun.clear();TK.rush.clear();MOD=SV.mu[SV.mod]?SV.mod:'';spdT=0;ovT=0;used=0;inv=0;DW=SV.dr>0?SV.fw:null;dsh=DW=='sh';dcd=0;drn.visible=!!DW;if(DW){drn.material.color.set(DW=='sh'?0x22d3ee:DW=='sn'?0xfbbf24:0xc084fc);sph.visible=dsh;drn.position.set(0,1.4,50)}
- pos.set(0,1.6,50);vx=vz=vy=0;jumps=1;carry=false;grounded=true;dashC=DN;dashT=0;dashR=0;dashCd=0;yaw=0;pitch=0;hp=MH;T=0;kills=0;extP=0;wave=0;rr=0;lastHit=-9;nextShot=0;hitT=0;hprog=0;hw=0;tgtName=NAMES[Math.random()*NAMES.length|0];equip(genItem('wp',0,a0));calcBuild();hp=MH;if(op)opApply(op);dashC=DN;
+ pos.set(0,1.6,50);vx=vz=vy=0;jumps=1;carry=false;grounded=true;mnT=0;mnG=0;dashC=DN;dashT=0;dsT=9;dashR=0;dashCd=0;yaw=0;pitch=0;hp=MH;T=0;kills=0;extP=0;wave=0;rr=0;lastHit=-9;nextShot=0;hitT=0;hprog=0;hw=0;tgtName=NAMES[Math.random()*NAMES.length|0];equip(genItem('wp',0,a0));calcBuild();hp=MH;if(op)opApply(op);dashC=DN;
  // inimigos do início em esquadras de 3 a 5 (com Sargento), espalhadas pelas zonas como antes
  let nE=Math.round(C.nEnemies*EN*MS[M].en);while(nE>0){let k=Math.min(nE,SQD.n[0]+(Math.random()*(SQD.n[1]-SQD.n[0]+1)|0));if(nE-k>0&&nE-k<SQD.n[0])k=nE<=SQD.n[1]?nE:nE-SQD.n[0];const p=LVspawnPt(22),s=sqMk(p.x,p.z,k,false);if(s)sqAmbTry(s);nE-=k}
  MS[M].setup();
@@ -1922,7 +1951,7 @@ function tuMesh(m){TUO.push(m);return m}
 function tutMap(b){gr.material.color.set(b.gc);GRm.material.color.copy(lift(b.gc,.1));GRM.material.color.copy(lift(b.gc,.17));S.background.set(b.bg);S.fog.color.set(b.bg);
  walls.length=0;LV.high=[];LV.seed=LV.next||1+(Math.random()*999999|0);LV.next=0;LV.tries=1;
  lvBox(-TUW-.4,0,.4,53,6,'wall');lvBox(TUW+.4,0,.4,53,6,'wall');lvBox(0,52.6,TUW+.8,.4,6,'wall');lvBox(0,-52.6,TUW+.8,.4,6,'wall');
- lvBox(0,31,TUW,.4,LVC.lowH,'low');lvBox(0,26,TUW,.4,2.4,'wall');
+ lvBox(0,31,TUW,.4,LVC.lowH,'low');lvBox(0,26,TUW,.4,2.4,'wall');walls[walls.length-1].nm=1; // muro alto do Treino: sem escalada (a lição é o pulo duplo)
  lvBox(-5,-14,1.3,.5,LVC.covH,'cov');lvBox(5,-22,1.3,.5,LVC.covH,'cov');lvBox(-6,-30,.5,1.3,LVC.covH,'cov');
  // a navegação dos inimigos parte da área de combate (eles não passam pelos muros nem vão ao começo)
  LV.ok=nvBuild(0,-5)>0;const s0=zoneAt(SPAWN.x,SPAWN.z);
@@ -1972,10 +2001,10 @@ function tutText(){const s=TUS[TUI];if(!s)return;const t=tuT(s.t),k=TUI+t;if(k==
 on('pick',it=>{if(M!='tut'||st!='play')return;const k=(it.sl||'wp')=='wp'?'pw':'pm';TUQ[k]=(TUQ[k]||0)+1});
 // a cada passo: vão elétrico (pisar nele volta para a beira), conclusão do passo e texto
 function tutTick(dt){
- if(grounded&&pos.y<1.7&&pos.z>TUV[0]&&pos.z<TUV[1]){const s=TUI<=3?TUV[1]+2:TUV[0]-2;pos.set(cl(pos.x,-TUW+1,TUW-1),1.6,s);vx=vz=vy=0;dashT=0;snd('warn');vib([20]);addTr(.2)}
+ if(grounded&&pos.y<1.7&&pos.z>TUV[0]&&pos.z<TUV[1]){const s=TUI<=3?TUV[1]+2:TUV[0]-2;pos.set(cl(pos.x,-TUW+1,TUW-1),1.6,s);vx=vz=vy=0;dashT=0;mnT=0;snd('warn');vib([20]);addTr(.2)}
  const s=TUS[TUI];if(s&&s.done(dt))tutStep(TUI+1);tutText()}
 // morrer no Treino volta ao último passo, sem tela de derrota
-function tutDie(){hp=MH;inv=1.5;const s=TUS[TUI];pos.set(0,1.6,s?s.cp:0);vx=vz=vy=0;dashT=0;snd('lose');addTr(.3)}
+function tutDie(){hp=MH;inv=1.5;const s=TUS[TUI];pos.set(0,1.6,s?s.cp:0);vx=vz=vy=0;dashT=0;mnT=0;snd('lose');addTr(.3)}
 function tutOff(){TUO.forEach(m=>S.remove(m));TUO=[];TUE={};const s=TUS[TUI];if(s&&s.hl)$(s.hl).classList.remove('tuhl');TUI=0;$('tut').style.display='none'}
 MS.tut={n:'Treino',d:'Missão curta que ensina o básico.',en:0,th:1,hide:1,bare:1,ext:TUT.ext,map:tutMap,
  setup(){phase='tut';ZRW.forEach(r=>r.m&&S.remove(r.m));ZRW=[];AMC=0;DW=null;dsh=false;drn.visible=false;sph.visible=false;ARSA=['pistol','shotgun'];equip(genItem('wp',0,'pistol'));calcBuild();hp=MH;dashC=DN;
